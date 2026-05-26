@@ -9,40 +9,7 @@ interface ShakeEvent {
 
 type ColorMode = 'normal' | 'gradient'
 
-// Beautiful gradient color palettes - soft and non-aggressive
-const GRADIENT_PALETTES = [
-  ['#FF6B6B', '#4ECDC4', '#45B7D1'], // Coral to Teal
-  ['#A8E6CF', '#FFD3B6', '#FFAAA5'], // Soft pastel
-  ['#DDA0DD', '#98D8C8', '#F7DC6F'], // Lavender to Mint
-  ['#FF9A9E', '#FECFEF', '#FECFEF'], // Pink gradient
-  ['#A18CD1', '#FBC2EB', '#FBC2EB'], // Purple to Pink
-  ['#FFD89B', '#19547B', '#19547B'], // Warm sunset
-  ['#96E6A1', '#D4FC79', '#D4FC79'], // Fresh green
-  ['#FDCBF1', '#E6DEE9', '#E6DEE9'], // Soft pink lavender
-  ['#84FAB0', '#8FD3F4', '#8FD3F4'], // Mint to Sky
-  ['#FA709A', '#FEE140', '#FEE140'], // Warm pink to yellow
-]
-
-// Hex to RGB helper function
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : null
-}
-
-// Generate a random soft color
-function generateRandomSoftColor(): string {
-  // Generate colors with medium saturation and lightness for soft appearance
-  const h = Math.random() * 360
-  const s = 50 + Math.random() * 30 // 50-80% saturation
-  const l = 50 + Math.random() * 20 // 50-70% lightness
-  return `hsl(${h}, ${s}%, ${l}%)`
-}
-
-// HSL to RGB conversion
+// HSL to RGB conversion for beautiful gradients
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
   s /= 100
   l /= 100
@@ -67,14 +34,13 @@ export default function EtchASketch() {
   const animationRef = useRef<number>(0)
   const lastAccelerationRef = useRef<{ x: number; y: number; z: number } | null>(null)
   
-  // State
+  // State - COLOR MODE ACTIVATED BY DEFAULT
   const [isStarted, setIsStarted] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
   const [isErasing, setIsErasing] = useState(false)
   const [dustProgress, setDustProgress] = useState(0)
   const [showDustBar, setShowDustBar] = useState(false)
-  const [colorMode, setColorMode] = useState<ColorMode>('normal')
-  const [currentColorIndex, setCurrentColorIndex] = useState(0)
+  const [colorMode, setColorMode] = useState<ColorMode>('gradient') // ACTIVÉ PAR DÉFAUT
   const [showColorModeIndicator, setShowColorModeIndicator] = useState(false)
   
   // Pen state
@@ -83,23 +49,24 @@ export default function EtchASketch() {
   const targetVelocityRef = useRef({ vxMove: 0, vyMove: 0, vxDraw: 0, vyDraw: 0 })
   
   // Joystick state
-  const moveJoystickRef = useRef({ active: false, angle: 0, distance: 0 })
-  const drawJoystickRef = useRef({ active: false, angle: 0, distance: 0 })
+  const moveJoystickRef = useRef({ active: false })
+  const drawJoystickRef = useRef({ active: false })
   
-  // Shake detection state for ERASE (continuous shaking)
-  const eraseShakeEventsRef = useRef<ShakeEvent[]>([])
+  // Shake detection - separate tracking for each feature
+  const lastShakeTimeRef = useRef(0)
+  const eraseShakeCountRef = useRef(0)
+  const colorShakeCountRef = useRef(0)
+  const lastColorShakeTimeRef = useRef(0)
   const dustProgressRef = useRef(0)
   const decayTimerRef = useRef<NodeJS.Timeout | null>(null)
-  
-  // Shake detection state for COLOR MODE (2 shakes with pauses)
-  const colorShakesRef = useRef<ShakeEvent[]>([])
+  const eraseDecayTimerRef = useRef<NodeJS.Timeout | null>(null)
   
   // Gradient animation state
   const gradientTimeRef = useRef(0)
-  const gradientHueRef = useRef(0)
+  const gradientHueRef = useRef(Math.random() * 360) // Random start
   
-  // Color mode state ref for immediate access
-  const colorModeRef = useRef<ColorMode>('normal')
+  // Color mode ref for immediate access
+  const colorModeRef = useRef<ColorMode>('gradient') // ACTIVÉ PAR DÉFAUT
   
   // Check orientation
   useEffect(() => {
@@ -129,18 +96,37 @@ export default function EtchASketch() {
     }
     
     // Gradient mode - beautiful flowing colors
-    gradientTimeRef.current += 0.015
-    gradientHueRef.current += 0.5
+    gradientTimeRef.current += 0.02
+    gradientHueRef.current = (gradientHueRef.current + 0.8) % 360
     
     const t = gradientTimeRef.current
-    const hue1 = gradientHueRef.current % 360
+    const hue1 = gradientHueRef.current
     const hue2 = (hue1 + 60) % 360
+    const hue3 = (hue1 + 120) % 360
     
-    // Create flowing gradient between two hues
-    const blend = (Math.sin(t * 2) + 1) / 2
+    // Create flowing gradient between three hues
+    const phase = t % 3
+    let h1: number, h2: number, blend: number
     
-    const color1 = hslToRgb(hue1, 70, 60)
-    const color2 = hslToRgb(hue2, 70, 60)
+    if (phase < 1) {
+      h1 = hue1
+      h2 = hue2
+      blend = phase
+    } else if (phase < 2) {
+      h1 = hue2
+      h2 = hue3
+      blend = phase - 1
+    } else {
+      h1 = hue3
+      h2 = hue1
+      blend = phase - 2
+    }
+    
+    // Smooth easing
+    blend = (Math.sin(blend * Math.PI - Math.PI / 2) + 1) / 2
+    
+    const color1 = hslToRgb(h1, 75, 55)
+    const color2 = hslToRgb(h2, 75, 55)
     
     const r = Math.round(color1.r + (color2.r - color1.r) * blend)
     const g = Math.round(color1.g + (color2.g - color1.g) * blend)
@@ -164,7 +150,7 @@ export default function EtchASketch() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     
-    ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
+    ctx.strokeStyle = getStrokeColor()
     ctx.lineJoin = 'round'
     ctx.lineCap = 'square'
     ctx.lineWidth = 3.5
@@ -177,7 +163,7 @@ export default function EtchASketch() {
     }
     
     updatePointer()
-  }, [updatePointer])
+  }, [updatePointer, getStrokeColor])
   
   // Erase screen
   const eraseScreen = useCallback(() => {
@@ -186,7 +172,7 @@ export default function EtchASketch() {
     setIsErasing(true)
     setDustProgress(0)
     dustProgressRef.current = 0
-    eraseShakeEventsRef.current = []
+    eraseShakeCountRef.current = 0
     
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
@@ -195,14 +181,21 @@ export default function EtchASketch() {
       return
     }
     
+    // Shake animation on the main container
+    const toy = canvas.closest('#etch-container')
+    if (toy) {
+      toy.classList.add('shaking')
+    }
+    
     let opacity = 0
     const fade = setInterval(() => {
-      ctx.fillStyle = 'rgba(196, 196, 196, 0.3)'
+      ctx.fillStyle = 'rgba(196, 196, 196, 0.35)'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
-      opacity += 0.3
+      opacity += 0.35
       
-      if (opacity >= 1.5) {
+      if (opacity >= 2) {
         clearInterval(fade)
+        if (toy) toy.classList.remove('shaking')
         setIsErasing(false)
         setShowDustBar(false)
         
@@ -225,8 +218,6 @@ export default function EtchASketch() {
     setColorMode(newMode)
     
     if (newMode === 'gradient') {
-      // Start with random palette and hue
-      setCurrentColorIndex(Math.floor(Math.random() * GRADIENT_PALETTES.length))
       gradientHueRef.current = Math.random() * 360
       gradientTimeRef.current = 0
     }
@@ -235,76 +226,83 @@ export default function EtchASketch() {
     setShowColorModeIndicator(true)
     setTimeout(() => setShowColorModeIndicator(false), 2000)
     
-    // Clear shake events
-    colorShakesRef.current = []
+    // Reset shake tracking
+    colorShakeCountRef.current = 0
+    lastColorShakeTimeRef.current = 0
   }, [])
   
-  // Handle shake detection for ERASE (continuous shaking without pause)
-  const handleEraseShake = useCallback(() => {
-    if (isErasing) return
-    
+  // Handle shake detection - SIMPLIFIED AND ROBUST
+  const handleShake = useCallback(() => {
     const now = Date.now()
-    eraseShakeEventsRef.current.push({ timestamp: now })
     
-    // Keep only shakes from last 600ms
-    eraseShakeEventsRef.current = eraseShakeEventsRef.current.filter(e => now - e.timestamp < 600)
-    
-    // If we have many shakes in short time = continuous shaking
-    if (eraseShakeEventsRef.current.length >= 4) {
-      setShowDustBar(true)
-      dustProgressRef.current += 20
-      setDustProgress(Math.min(100, dustProgressRef.current))
+    // === ERASE DETECTION (continuous shaking) ===
+    // If shakes are close together (< 300ms), count for erase
+    if (now - lastShakeTimeRef.current < 300) {
+      eraseShakeCountRef.current++
       
+      // Show and fill dust bar
+      setShowDustBar(true)
+      dustProgressRef.current = Math.min(100, eraseShakeCountRef.current * 12)
+      setDustProgress(dustProgressRef.current)
+      
+      // Clear decay timer
+      if (eraseDecayTimerRef.current) {
+        clearTimeout(eraseDecayTimerRef.current)
+        eraseDecayTimerRef.current = null
+      }
+      
+      // Erase when bar is full
       if (dustProgressRef.current >= 100) {
         eraseScreen()
-        eraseShakeEventsRef.current = []
+        eraseShakeCountRef.current = 0
+        lastShakeTimeRef.current = 0
         return
       }
-      
-      // Reset decay timer
-      if (decayTimerRef.current) {
-        clearTimeout(decayTimerRef.current)
-      }
-      
-      // Start decay if no more shakes
-      decayTimerRef.current = setTimeout(() => {
-        const decay = setInterval(() => {
-          dustProgressRef.current -= 5
-          setDustProgress(Math.max(0, dustProgressRef.current))
-          
-          if (dustProgressRef.current <= 0) {
-            clearInterval(decay)
-            setShowDustBar(false)
-          }
-        }, 30)
-      }, 400)
-    }
-  }, [isErasing, eraseScreen])
-  
-  // Handle shake detection for COLOR MODE (2 shakes with pause between)
-  const handleColorShake = useCallback(() => {
-    const now = Date.now()
-    colorShakesRef.current.push({ timestamp: now })
-    
-    // Keep only shakes from last 2 seconds
-    colorShakesRef.current = colorShakesRef.current.filter(e => now - e.timestamp < 2000)
-    
-    const shakes = colorShakesRef.current
-    
-    // We need exactly 2 shakes with a PAUSE between them (300-1000ms gap)
-    if (shakes.length >= 2) {
-      for (let i = 1; i < shakes.length; i++) {
-        const gap = shakes[i].timestamp - shakes[i - 1].timestamp
-        
-        // If there's a pause of 300-1000ms between two shakes, toggle color mode
-        if (gap >= 300 && gap <= 1000) {
-          toggleColorMode()
-          colorShakesRef.current = []
-          return
-        }
+    } else {
+      // Start decay if no shake for 300ms
+      if (eraseShakeCountRef.current > 0 && !eraseDecayTimerRef.current) {
+        eraseDecayTimerRef.current = setTimeout(() => {
+          const decay = setInterval(() => {
+            eraseShakeCountRef.current = Math.max(0, eraseShakeCountRef.current - 1)
+            dustProgressRef.current = eraseShakeCountRef.current * 12
+            setDustProgress(dustProgressRef.current)
+            
+            if (eraseShakeCountRef.current <= 0) {
+              clearInterval(decay)
+              setShowDustBar(false)
+              eraseDecayTimerRef.current = null
+            }
+          }, 50)
+        }, 400)
       }
     }
-  }, [toggleColorMode])
+    
+    // === COLOR MODE DETECTION (2 shakes with pause) ===
+    // We need: shake - pause (300-1000ms) - shake
+    const timeSinceLastColorShake = now - lastColorShakeTimeRef.current
+    
+    if (lastColorShakeTimeRef.current === 0) {
+      // First shake
+      colorShakeCountRef.current = 1
+    } else if (timeSinceLastColorShake > 300 && timeSinceLastColorShake < 1500) {
+      // Second shake with proper pause - TOGGLE COLOR MODE
+      colorShakeCountRef.current++
+      
+      if (colorShakeCountRef.current >= 2) {
+        toggleColorMode()
+        colorShakeCountRef.current = 0
+        lastColorShakeTimeRef.current = 0
+        lastShakeTimeRef.current = now
+        return
+      }
+    } else if (timeSinceLastColorShake > 1500) {
+      // Too long, reset
+      colorShakeCountRef.current = 1
+    }
+    
+    lastColorShakeTimeRef.current = now
+    lastShakeTimeRef.current = now
+  }, [eraseScreen, toggleColorMode])
   
   // Game loop
   useEffect(() => {
@@ -443,37 +441,44 @@ export default function EtchASketch() {
     }
   }, [])
   
-  // Device motion handler
+  // Device motion handler - SIMPLIFIED
   useEffect(() => {
     if (!isStarted) return
+    
+    let lastX = 0, lastY = 0, lastZ = 0
+    let initialized = false
     
     const handleDeviceMotion = (e: DeviceMotionEvent) => {
       const acc = e.accelerationIncludingGravity
       if (!acc || acc.x === null) return
       
-      if (!lastAccelerationRef.current) {
-        lastAccelerationRef.current = { x: acc.x, y: acc.y, z: acc.z || 0 }
+      if (!initialized) {
+        lastX = acc.x || 0
+        lastY = acc.y || 0
+        lastZ = acc.z || 0
+        initialized = true
         return
       }
       
-      const deltaX = Math.abs((acc.x || 0) - lastAccelerationRef.current.x)
-      const deltaY = Math.abs((acc.y || 0) - lastAccelerationRef.current.y)
-      const deltaZ = Math.abs((acc.z || 0) - lastAccelerationRef.current.z)
+      const deltaX = Math.abs((acc.x || 0) - lastX)
+      const deltaY = Math.abs((acc.y || 0) - lastY)
+      const deltaZ = Math.abs((acc.z || 0) - lastZ)
       
-      const threshold = 15
+      // Lower threshold for better detection
+      const threshold = 12
       
       if (deltaX > threshold || deltaY > threshold || deltaZ > threshold) {
-        // Both handlers receive the shake
-        handleEraseShake()
-        handleColorShake()
+        handleShake()
       }
       
-      lastAccelerationRef.current = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 }
+      lastX = acc.x || 0
+      lastY = acc.y || 0
+      lastZ = acc.z || 0
     }
     
     window.addEventListener('devicemotion', handleDeviceMotion)
     return () => window.removeEventListener('devicemotion', handleDeviceMotion)
-  }, [isStarted, handleEraseShake, handleColorShake])
+  }, [isStarted, handleShake])
   
   // Double tap to erase
   useEffect(() => {
@@ -525,6 +530,10 @@ export default function EtchASketch() {
     await requestMotionPermission()
     setIsStarted(true)
     
+    // Show initial color mode indicator
+    setShowColorModeIndicator(true)
+    setTimeout(() => setShowColorModeIndicator(false), 2000)
+    
     // Initialize canvas after state update
     setTimeout(() => {
       initCanvas()
@@ -545,6 +554,18 @@ export default function EtchASketch() {
   
   return (
     <div className="fixed inset-0 bg-[#080808] flex justify-center items-center overflow-hidden touch-none select-none">
+      {/* Shake animation styles */}
+      <style jsx global>{`
+        @keyframes shakeFast {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          20%, 60% { transform: translate(-15px, 8px) rotate(-1deg); }
+          40%, 80% { transform: translate(15px, -8px) rotate(1deg); }
+        }
+        .shaking {
+          animation: shakeFast 0.6s ease-in-out !important;
+        }
+      `}</style>
+      
       {/* Orientation overlay */}
       {!isLandscape && (
         <div className="absolute inset-0 bg-black/98 text-white z-[99999] flex flex-col justify-center items-center text-center p-5">
@@ -558,6 +579,7 @@ export default function EtchASketch() {
       
       {/* Main Etch-A-Sketch */}
       <div 
+        id="etch-container"
         className="relative w-full h-full max-w-[1200px] bg-[#d10a0a] rounded-[4vh] flex flex-col items-center p-[4vh_4vw]"
         style={{
           boxShadow: 'inset 15px 15px 30px rgba(255,255,255,0.2), inset -15px -15px 30px rgba(0,0,0,0.5), 0 20px 50px rgba(0,0,0,0.9)'
@@ -565,20 +587,21 @@ export default function EtchASketch() {
       >
         {/* Instructions */}
         {isStarted && (
-          <div className="absolute top-[1.5vh] left-1/2 -translate-x-1/2 text-white/80 text-[1.4vh] font-bold tracking-wider z-10 text-center whitespace-nowrap">
-            <span className="text-yellow-300">Secouez</span> = Effacer | <span className="text-cyan-300">2 secousses + pause</span> = Couleur
+          <div className="absolute top-[1.5vh] left-1/2 -translate-x-1/2 text-white/90 text-[1.4vh] font-bold tracking-wider z-10 text-center whitespace-nowrap bg-black/30 px-4 py-1 rounded-full">
+            <span className="text-yellow-300">Secouez vite</span> = Effacer | <span className="text-cyan-300">Secouez 2x avec pause</span> = Couleur
           </div>
         )}
         
         {/* Color mode indicator - large and visible */}
         {showColorModeIndicator && (
           <div 
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] px-6 py-3 rounded-2xl text-lg font-bold text-white animate-bounce"
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] px-8 py-4 rounded-2xl text-xl font-bold text-white"
             style={{
               background: colorMode === 'gradient' 
                 ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1, #A8E6CF, #FFD3B6)'
-                : 'rgba(0,0,0,0.8)',
-              boxShadow: '0 0 30px rgba(255,255,255,0.3)'
+                : 'rgba(50,50,50,0.9)',
+              boxShadow: '0 0 40px rgba(255,255,255,0.4)',
+              animation: 'pulse 0.5s ease-in-out 3'
             }}
           >
             {colorMode === 'gradient' ? '🌈 Mode Couleur Activé !' : '⚫ Mode Normal'}
@@ -616,20 +639,20 @@ export default function EtchASketch() {
               style={{
                 backgroundColor: colorMode === 'gradient' ? '#FF6B6B' : 'black',
                 boxShadow: colorMode === 'gradient' 
-                  ? '0 0 10px #FF6B6B, 0 0 20px #4ECDC4' 
+                  ? '0 0 15px #FF6B6B, 0 0 25px #4ECDC4, 0 0 35px #45B7D1' 
                   : '0 0 0 2px rgba(255,255,255,0.7)'
               }}
             />
             
             {/* Dust bar for erase */}
             {showDustBar && (
-              <div className="absolute top-0 left-0 right-0 h-[8px] bg-black/20 z-50 rounded-t-[1.5vh] overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[10px] bg-black/30 z-50 rounded-t-[1.5vh] overflow-hidden">
                 <div
-                  className="h-full transition-[width] duration-[60ms]"
+                  className="h-full transition-[width] duration-[30ms]"
                   style={{
                     width: `${dustProgress}%`,
                     background: 'linear-gradient(90deg, #d4af37, #ff6b35, #ff2222)',
-                    boxShadow: '0 0 15px rgba(255,100,50,0.8)'
+                    boxShadow: '0 0 20px rgba(255,100,50,0.8)'
                   }}
                 />
               </div>
@@ -668,13 +691,13 @@ export default function EtchASketch() {
           </div>
         </div>
         
-        {/* Color mode badge */}
+        {/* Color mode badge - always visible when in gradient mode */}
         {colorMode === 'gradient' && isStarted && (
           <div 
             className="absolute top-16 right-4 px-4 py-2 rounded-full text-sm font-bold text-white"
             style={{
               background: 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)',
-              animation: 'pulse 1s infinite'
+              boxShadow: '0 0 15px rgba(78,205,196,0.5)'
             }}
           >
             🌈 Couleur
@@ -716,7 +739,7 @@ export default function EtchASketch() {
               </div>
             </div>
             
-            {/* Draw joystick */}
+            {/* Draw joystick - with gradient in color mode */}
             <div
               className="absolute bottom-[3vh] right-[4vw] w-[18vh] h-[18vh] min-w-[100px] min-h-[100px] max-w-[150px] max-h-[150px] rounded-full bg-black/10 flex justify-center items-center"
               style={{
@@ -737,13 +760,15 @@ export default function EtchASketch() {
                   background: colorMode === 'gradient'
                     ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)'
                     : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)',
-                  boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)'
+                  boxShadow: colorMode === 'gradient'
+                    ? '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4), 0 0 20px rgba(78,205,196,0.5)'
+                    : '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)'
                 }}
               >
                 <div 
                   className="w-[35%] h-[35%] rounded-full"
                   style={{ 
-                    background: colorMode === 'gradient' ? 'rgba(255,255,255,0.5)' : '#d0d0d0',
+                    background: colorMode === 'gradient' ? 'rgba(255,255,255,0.6)' : '#d0d0d0',
                     boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' 
                   }}
                 />
