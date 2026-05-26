@@ -276,40 +276,53 @@ export default function EtchASketch() {
         return
       }
       
+      // Smooth velocity interpolation
       velocityRef.current.vxMove += (targetVelocityRef.current.vxMove - velocityRef.current.vxMove) * 0.15
       velocityRef.current.vyMove += (targetVelocityRef.current.vyMove - velocityRef.current.vyMove) * 0.15
       velocityRef.current.vxDraw += (targetVelocityRef.current.vxDraw - velocityRef.current.vxDraw) * 0.20
       velocityRef.current.vyDraw += (targetVelocityRef.current.vyDraw - velocityRef.current.vyDraw) * 0.20
       
-      let moved = false
+      const vxTotal = velocityRef.current.vxMove + velocityRef.current.vxDraw
+      const vyTotal = velocityRef.current.vyMove + velocityRef.current.vyDraw
       
-      if (Math.abs(velocityRef.current.vxMove) > 0.1 || Math.abs(velocityRef.current.vyMove) > 0.1) {
-        penRef.current.x += velocityRef.current.vxMove
-        penRef.current.y += velocityRef.current.vyMove
-        moved = true
-        penRef.current.lastX = penRef.current.x
-        penRef.current.lastY = penRef.current.y
+      // Update pointer position ALWAYS
+      const pointer = pointerRef.current
+      if (pointer) {
+        pointer.style.left = `${penRef.current.x}px`
+        pointer.style.top = `${penRef.current.y}px`
       }
       
-      if (Math.abs(velocityRef.current.vxDraw) > 0.1 || Math.abs(velocityRef.current.vyDraw) > 0.1) {
-        penRef.current.x += velocityRef.current.vxDraw
-        penRef.current.y += velocityRef.current.vyDraw
-        moved = true
+      // Only move if there's significant velocity
+      if (Math.abs(vxTotal) > 0.05 || Math.abs(vyTotal) > 0.05) {
+        const oldX = penRef.current.x
+        const oldY = penRef.current.y
         
-        ctx.strokeStyle = getStrokeColor()
-        ctx.beginPath()
-        ctx.moveTo(penRef.current.lastX, penRef.current.lastY)
-        ctx.lineTo(penRef.current.x, penRef.current.y)
-        ctx.stroke()
+        // Move pen
+        penRef.current.x += vxTotal
+        penRef.current.y += vyTotal
         
-        penRef.current.lastX = penRef.current.x
-        penRef.current.lastY = penRef.current.y
-      }
-      
-      if (moved) {
+        // Clamp to canvas
         penRef.current.x = Math.max(0, Math.min(canvas.width, penRef.current.x))
         penRef.current.y = Math.max(0, Math.min(canvas.height, penRef.current.y))
-        updatePointer()
+        
+        // Draw only if DRAW joystick is active
+        if (Math.abs(velocityRef.current.vxDraw) > 0.05 || Math.abs(velocityRef.current.vyDraw) > 0.05) {
+          ctx.strokeStyle = getStrokeColor()
+          ctx.beginPath()
+          ctx.moveTo(penRef.current.lastX, penRef.current.lastY)
+          ctx.lineTo(penRef.current.x, penRef.current.y)
+          ctx.stroke()
+        }
+        
+        // Always update last position for continuous drawing
+        penRef.current.lastX = penRef.current.x
+        penRef.current.lastY = penRef.current.y
+        
+        // Update pointer position
+        if (pointer) {
+          pointer.style.left = `${penRef.current.x}px`
+          pointer.style.top = `${penRef.current.y}px`
+        }
       }
       
       animationRef.current = requestAnimationFrame(gameLoop)
@@ -321,7 +334,7 @@ export default function EtchASketch() {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current)
     }
-  }, [isStarted, initCanvas, updatePointer, getStrokeColor])
+  }, [isStarted, initCanvas, getStrokeColor])
   
   // Joystick handlers
   const handleJoystickStart = useCallback((type: 'move' | 'draw', e: React.TouchEvent | React.MouseEvent) => {
