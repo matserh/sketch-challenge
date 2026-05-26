@@ -471,13 +471,17 @@ export default function EtchASketch() {
           </div>
         )}
         
-        {/* Screen */}
+        {/* Screen bezel */}
         <div 
-          ref={wrapperRef}
           className="relative w-[90%] h-[68%] bg-[#d4d4d4] rounded-[2.5vh] p-[1.5vh]"
           style={{ boxShadow: 'inset 6px 6px 18px rgba(0,0,0,0.5), inset -6px -6px 18px rgba(255,255,255,0.9)' }}
         >
-          <div className="relative w-full h-full rounded-[1.5vh] overflow-hidden" style={{ boxShadow: 'inset 3px 3px 10px rgba(0,0,0,0.4)' }}>
+          {/* Canvas wrapper - C'EST ICI que wrapperRef doit être */}
+          <div 
+            ref={wrapperRef}
+            className="relative w-full h-full rounded-[1.5vh] overflow-hidden" 
+            style={{ boxShadow: 'inset 3px 3px 10px rgba(0,0,0,0.4)' }}
+          >
             <canvas
               ref={canvasRef}
               className="w-full h-full block"
@@ -487,11 +491,14 @@ export default function EtchASketch() {
               }}
             />
             
-            {/* Pointer */}
+            {/* Pointer - centré avec translate(-50%, -50%) */}
             <div
               ref={pointerRef}
               className="absolute w-2 h-2 bg-black rounded-full pointer-events-none z-10"
-              style={{ boxShadow: '0 0 0 2px rgba(255,255,255,0.7)' }}
+              style={{ 
+                transform: 'translate(-50%, -50%)',
+                boxShadow: '0 0 0 2px rgba(255,255,255,0.7)'
+              }}
             />
             
             {/* Dust bar */}
