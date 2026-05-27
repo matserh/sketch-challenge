@@ -66,10 +66,11 @@ export default function EtchASketch() {
   const lastShakeTime = useRef(0)
   const shakeDecayTimer = useRef<NodeJS.Timeout | null>(null)
   
-  // Eraser activation: 3 shakes within 60 seconds
-  const eraserShakeTimes = useRef<number[]>([])
+  // Eraser activation: 3 shakes with pause between each
+  const eraserShakeCount = useRef(0)
+  const lastEraserShakeTime = useRef(0)
   
-  // Color toggle
+  // Color toggle: 2 shakes with pause
   const colorShakeCount = useRef(0)
   const lastColorShakeTime = useRef(0)
   
@@ -221,7 +222,6 @@ export default function EtchASketch() {
     setEraserSelectorY(0)
     
     if (newMode === 'eraser') {
-      // Initialize eraser position
       const canvas = canvasRef.current
       if (canvas) {
         eraserX.current = canvas.width / 2
@@ -230,24 +230,18 @@ export default function EtchASketch() {
     }
     
     updatePointer()
-    eraserShakeTimes.current = []
+    eraserShakeCount.current = 0
+    lastEraserShakeTime.current = 0
   }, [updatePointer])
   
-  // Check for eraser activation (3 shakes within 60 seconds)
-  const checkEraserActivation = useCallback(() => {
-    const now = Date.now()
-    eraserShakeTimes.current.push(now)
-    
-    // Keep only shakes from last 60 seconds
-    eraserShakeTimes.current = eraserShakeTimes.current.filter(t => now - t < 60000)
-    
-    // If 3 or more shakes within 60 seconds, show eraser panel
-    if (eraserShakeTimes.current.length >= 3 && gameModeRef.current === 'draw') {
-      setShowEraserPanel(true)
-      setEraserSelectorY(0)
-      eraserShakeTimes.current = []
-    }
-  }, [])
+  // Exit eraser mode with single shake
+  const exitEraserMode = useCallback(() => {
+    gameModeRef.current = 'draw'
+    setGameMode('draw')
+    updatePointer()
+    eraserShakeCount.current = 0
+    lastEraserShakeTime.current = 0
+  }, [updatePointer])
   
   // Handle shake
   const onShakeDetected = useCallback(() => {
@@ -255,10 +249,42 @@ export default function EtchASketch() {
     
     const now = Date.now()
     
-    // Check for eraser activation first
-    checkEraserActivation()
+    // IF IN ERASER MODE: single shake exits
+    if (gameModeRef.current === 'eraser') {
+      exitEraserMode()
+      return
+    }
     
-    // ERASE: continuous shaking
+    // IF ERASER PANEL IS SHOWING: any shake cancels it
+    if (showEraserPanel) {
+      setShowEraserPanel(false)
+      setEraserSelectorY(0)
+      eraserShakeCount.current = 0
+      lastEraserShakeTime.current = 0
+      return
+    }
+    
+    // ERASER ACTIVATION: 3 shakes with pause between each (300-1500ms)
+    const timeSinceEraserShake = now - lastEraserShakeTime.current
+    if (lastEraserShakeTime.current === 0 || timeSinceEraserShake > 1500) {
+      // First shake or reset (too long)
+      eraserShakeCount.current = 1
+    } else if (timeSinceEraserShake > 300 && timeSinceEraserShake < 1500) {
+      // Shake with proper pause (300-1500ms)
+      eraserShakeCount.current++
+      
+      if (eraserShakeCount.current >= 3) {
+        // 3 shakes with pauses = show eraser panel
+        setShowEraserPanel(true)
+        setEraserSelectorY(0)
+        eraserShakeCount.current = 0
+        lastEraserShakeTime.current = 0
+        return
+      }
+    }
+    lastEraserShakeTime.current = now
+    
+    // FULL ERASE: continuous shaking (only in draw mode)
     if (now - lastShakeTime.current < 300) {
       shakeCount.current++
     } else {
@@ -288,7 +314,7 @@ export default function EtchASketch() {
       }, 50)
     }, 300)
     
-    // COLOR TOGGLE: 2 shakes with pause
+    // COLOR TOGGLE: 2 shakes with pause (different pattern than eraser)
     const timeSinceColor = now - lastColorShakeTime.current
     if (lastColorShakeTime.current === 0 || timeSinceColor > 1500) {
       colorShakeCount.current = 1
@@ -299,7 +325,7 @@ export default function EtchASketch() {
       }
     }
     lastColorShakeTime.current = now
-  }, [isErasing, eraseScreen, checkEraserActivation, toggleColorMode])
+  }, [isErasing, eraseScreen, exitEraserMode, showEraserPanel, toggleColorMode])
   
   // Game loop
   useEffect(() => {
@@ -599,15 +625,27 @@ export default function EtchASketch() {
       >
         {/* Instructions */}
         {isStarted && !showEraserPanel && gameMode === 'draw' && (
-          <div className="absolute top-[1.5vh] text-white/80 text-[1.4vh] font-bold tracking-wider z-10 text-center">
-            Secouez pour effacer | 3 secousses = Gomme
+          <div 
+            className="absolute top-[1.5vh] text-white/80 text-[1.3vh] font-bold tracking-wider z-10 text-center whitespace-nowrap px-4 py-1.5 rounded-full"
+            style={{ background: 'rgba(0,0,0,0.3)' }}
+          >
+            Secouez vite = Effacer | 3 secousses avec pause = Gomme
           </div>
         )}
         
         {/* Eraser mode indicator */}
         {gameMode === 'eraser' && (
-          <div className="absolute top-[1.5vh] text-white text-[1.6vh] font-bold tracking-wider z-10 bg-black/50 px-4 py-1 rounded-full">
-            ✏️ MODE GOMME - Secouez pour quitter
+          <div 
+            className="absolute top-[1.5vh] text-white text-[1.4vh] font-bold tracking-wider z-10 px-4 py-1.5 rounded-full flex items-center gap-2"
+            style={{ 
+              background: 'linear-gradient(135deg, rgba(78,205,196,0.8), rgba(69,183,209,0.8))',
+              boxShadow: '0 0 20px rgba(78,205,196,0.3)'
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            MODE GOMME • Secouez pour quitter
           </div>
         )}
         
@@ -641,29 +679,106 @@ export default function EtchASketch() {
               }}
             />
             
-            {/* Eraser Panel */}
+            {/* Eraser Panel - Design amélioré */}
             {showEraserPanel && (
-              <div className="absolute inset-0 bg-black/70 flex flex-col justify-center items-center z-50">
-                <div className="bg-white/90 rounded-2xl p-6 text-center shadow-2xl">
-                  <div className="text-2xl mb-4">🧹</div>
-                  <h3 className="text-xl font-bold text-black mb-4">GOMME</h3>
-                  <p className="text-sm text-black/70 mb-4">Utilisez le joystick gauche pour sélectionner</p>
-                  
-                  {/* Selector */}
-                  <div className="flex flex-col gap-2">
-                    <div 
-                      className={`px-6 py-3 rounded-lg text-lg font-bold transition-all ${eraserSelectorY <= 0 ? 'bg-[#d10a0a] text-white scale-105' : 'bg-gray-200 text-black'}`}
-                    >
-                      ✓ Activer
-                    </div>
-                    <div 
-                      className={`px-6 py-3 rounded-lg text-lg font-bold transition-all ${eraserSelectorY > 0 ? 'bg-gray-500 text-white scale-105' : 'bg-gray-200 text-black'}`}
-                    >
-                      ✗ Annuler
-                    </div>
+              <div className="absolute inset-0 z-50 flex flex-col justify-center items-center"
+                style={{ 
+                  background: 'radial-gradient(circle at center, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.95) 100%)',
+                  backdropFilter: 'blur(4px)'
+                }}
+              >
+                <div 
+                  className="relative p-8 rounded-3xl text-center"
+                  style={{
+                    background: 'linear-gradient(145deg, #2a2a2a, #1a1a1a)',
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.1)'
+                  }}
+                >
+                  {/* Eraser Icon */}
+                  <div 
+                    className="w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center"
+                    style={{
+                      background: 'linear-gradient(135deg, #d4af37, #b8962e)',
+                      boxShadow: '0 4px 15px rgba(212,175,55,0.3)'
+                    }}
+                  >
+                    <svg className="w-8 h-8 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </div>
                   
-                  <p className="text-xs text-black/50 mt-4">Joystick droit pour confirmer</p>
+                  <h3 
+                    className="text-2xl font-bold mb-2 tracking-wide"
+                    style={{ 
+                      fontFamily: 'Georgia, serif',
+                      background: 'linear-gradient(135deg, #d4af37, #fff)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text'
+                    }}
+                  >
+                    GOMME
+                  </h3>
+                  
+                  <p className="text-white/50 text-sm mb-6">Effacer une partie du dessin</p>
+                  
+                  {/* Selector Options */}
+                  <div className="flex flex-col gap-3 mb-4">
+                    <button 
+                      className={`relative px-8 py-4 rounded-xl text-base font-bold transition-all duration-300 overflow-hidden ${
+                        eraserSelectorY <= 0 
+                          ? 'scale-105' 
+                          : 'opacity-60 hover:opacity-80'
+                      }`}
+                      style={{
+                        background: eraserSelectorY <= 0 
+                          ? 'linear-gradient(135deg, #4ECDC4, #45B7D1)' 
+                          : 'rgba(255,255,255,0.05)',
+                        color: eraserSelectorY <= 0 ? '#000' : 'rgba(255,255,255,0.7)',
+                        boxShadow: eraserSelectorY <= 0 
+                          ? '0 0 30px rgba(78,205,196,0.4)' 
+                          : 'none',
+                        border: eraserSelectorY <= 0 
+                          ? 'none' 
+                          : '1px solid rgba(255,255,255,0.1)'
+                      }}
+                    >
+                      {eraserSelectorY <= 0 && (
+                        <span className="absolute left-3">✓</span>
+                      )}
+                      <span>Activer la gomme</span>
+                    </button>
+                    
+                    <button 
+                      className={`relative px-8 py-4 rounded-xl text-base font-bold transition-all duration-300 ${
+                        eraserSelectorY > 0 
+                          ? 'scale-105' 
+                          : 'opacity-60 hover:opacity-80'
+                      }`}
+                      style={{
+                        background: eraserSelectorY > 0 
+                          ? 'rgba(255,100,100,0.3)' 
+                          : 'rgba(255,255,255,0.05)',
+                        color: eraserSelectorY > 0 ? '#ff6b6b' : 'rgba(255,255,255,0.7)',
+                        border: '1px solid rgba(255,255,255,0.1)'
+                      }}
+                    >
+                      {eraserSelectorY > 0 && (
+                        <span className="absolute left-3">✗</span>
+                      )}
+                      <span>Annuler</span>
+                    </button>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-white/10">
+                    <p className="text-white/30 text-xs">
+                      ↑↓ Joystick gauche pour sélectionner
+                    </p>
+                    <p className="text-white/30 text-xs mt-1">
+                      → Joystick droit pour confirmer
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
