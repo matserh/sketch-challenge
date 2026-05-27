@@ -34,6 +34,7 @@ export default function EtchASketch() {
   const [showDustBar, setShowDustBar] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>('gradient')
   const [gameMode, setGameMode] = useState<GameMode>('draw')
+  const [showMenu, setShowMenu] = useState(false)
   
   // Pen refs
   const penX = useRef(0)
@@ -557,7 +558,12 @@ export default function EtchASketch() {
           20%, 60% { transform: translate(-15px, 8px) rotate(-1deg); }
           40%, 80% { transform: translate(15px, -8px) rotate(1deg); }
         }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
         .shaking { animation: shakeFast 0.6s ease-in-out; }
+        .menu-slide { animation: slideDown 0.2s ease-out; }
       `}</style>
       
       {/* Orientation */}
@@ -578,34 +584,104 @@ export default function EtchASketch() {
           boxShadow: 'inset 15px 15px 30px rgba(255,255,255,0.2), inset -15px -15px 30px rgba(0,0,0,0.5), 0 20px 50px rgba(0,0,0,0.9)'
         }}
       >
-        {/* Instructions */}
-        {isStarted && gameMode === 'draw' && (
-          <div 
-            className="absolute top-[1.5vh] text-white/80 text-[1.3vh] font-bold tracking-wider z-10 text-center whitespace-nowrap px-4 py-1.5 rounded-full"
-            style={{ background: 'rgba(0,0,0,0.3)' }}
-          >
-            Secouez vite = Effacer tout
+        {/* Top bar with menu */}
+        {isStarted && (
+          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-20 flex justify-between items-center">
+            {/* Instructions */}
+            {gameMode === 'draw' && (
+              <div 
+                className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
+                style={{ background: 'rgba(0,0,0,0.3)' }}
+              >
+                Secouez vite = Effacer tout
+              </div>
+            )}
+            
+            {/* Eraser mode indicator */}
+            {gameMode === 'eraser' && (
+              <div 
+                className="text-white text-[1.2vh] font-bold tracking-wider px-3 py-1.5 rounded-full flex items-center gap-2"
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(78,205,196,0.8), rgba(69,183,209,0.8))',
+                  boxShadow: '0 0 15px rgba(78,205,196,0.3)'
+                }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                MODE GOMME
+                <button 
+                  onClick={exitEraserMode}
+                  className="ml-1 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors text-[10px]"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            
+            {/* Hamburger menu button */}
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="w-10 h-10 rounded-full flex flex-col justify-center items-center gap-1 transition-all duration-300"
+              style={{ 
+                background: showMenu ? 'rgba(212,175,55,0.9)' : 'rgba(0,0,0,0.4)',
+                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none'
+              }}
+            >
+              <span 
+                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+                style={{ transform: showMenu ? 'rotate(45deg) translateY(4px)' : 'none' }}
+              />
+              <span 
+                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+                style={{ opacity: showMenu ? 0 : 1 }}
+              />
+              <span 
+                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+                style={{ transform: showMenu ? 'rotate(-45deg) translateY(-4px)' : 'none' }}
+              />
+            </button>
           </div>
         )}
         
-        {/* Eraser mode indicator */}
-        {gameMode === 'eraser' && (
+        {/* Dropdown menu */}
+        {isStarted && showMenu && (
           <div 
-            className="absolute top-[1.5vh] text-white text-[1.4vh] font-bold tracking-wider z-10 px-4 py-1.5 rounded-full flex items-center gap-2"
-            style={{ 
-              background: 'linear-gradient(135deg, rgba(78,205,196,0.8), rgba(69,183,209,0.8))',
-              boxShadow: '0 0 20px rgba(78,205,196,0.3)'
+            className="absolute top-[6vh] right-[2vw] z-30 rounded-xl overflow-hidden menu-slide"
+            style={{
+              background: 'linear-gradient(145deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98))',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+              border: '1px solid rgba(212,175,55,0.3)'
             }}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            MODE GOMME
-            <button 
-              onClick={exitEraserMode}
-              className="ml-2 w-6 h-6 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors"
+            {/* Eraser button - toggle */}
+            <button
+              onClick={() => {
+                toggleEraserMode()
+                setShowMenu(false)
+              }}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
             >
-              ✕
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ 
+                  background: gameMode === 'eraser' 
+                    ? 'linear-gradient(135deg, #4ECDC4, #45B7D1)' 
+                    : 'linear-gradient(135deg, #d4af37, #b8962e)'
+                }}
+              >
+                <svg className="w-4 h-4 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <div className="text-white text-sm font-bold">
+                  {gameMode === 'eraser' ? 'Quitter Gomme' : 'Gomme'}
+                </div>
+                <div className="text-white/50 text-[10px]">
+                  {gameMode === 'eraser' ? 'Retour au dessin' : 'Effacer une partie'}
+                </div>
+              </div>
             </button>
           </div>
         )}
@@ -713,24 +789,6 @@ export default function EtchASketch() {
                 {gameMode === 'eraser' ? 'DEPLACER' : 'POSITION'}
               </div>
             </div>
-            
-            {/* Eraser button - only show in draw mode */}
-            {gameMode === 'draw' && (
-              <button
-                onClick={toggleEraserMode}
-                className="absolute bottom-[5vh] left-1/2 -translate-x-1/2 w-[12vh] h-[12vh] min-w-[70px] min-h-[70px] max-w-[100px] max-h-[100px] rounded-full flex flex-col justify-center items-center transition-all duration-200 active:scale-95"
-                style={{ 
-                  background: 'linear-gradient(145deg, #3a3a3a, #2a2a2a)',
-                  boxShadow: 'inset 2px 2px 6px rgba(255,255,255,0.1), inset -2px -2px 6px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.4)',
-                  border: '2px solid rgba(212,175,55,0.3)'
-                }}
-              >
-                <svg className="w-6 h-6 text-[#d4af37]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span className="text-[#d4af37] text-[1vh] font-bold mt-1">GOMME</span>
-              </button>
-            )}
             
             {/* Draw/Erase joystick */}
             <div
