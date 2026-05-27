@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 
 type ColorMode = 'normal' | 'gradient'
+type GameMode = 'draw' | 'eraser'
 
 // HSL to RGB
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
@@ -23,6 +24,7 @@ export default function EtchASketch() {
   const drawKnobRef = useRef<HTMLDivElement>(null)
   const toyRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number>(0)
+  const eraserCanvasRef = useRef<HTMLCanvasElement>(null)
   
   // State
   const [isStarted, setIsStarted] = useState(false)
@@ -31,8 +33,11 @@ export default function EtchASketch() {
   const [dustProgress, setDustProgress] = useState(0)
   const [showDustBar, setShowDustBar] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>('gradient')
+  const [gameMode, setGameMode] = useState<GameMode>('draw')
+  const [showEraserPanel, setShowEraserPanel] = useState(false)
+  const [eraserSelectorY, setEraserSelectorY] = useState(0)
   
-  // Internal refs (like the original ghost object)
+  // Pen refs
   const penX = useRef(0)
   const penY = useRef(0)
   const lastPenX = useRef(0)
@@ -48,21 +53,30 @@ export default function EtchASketch() {
   const targetVxDraw = useRef(0)
   const targetVyDraw = useRef(0)
   
+  // Eraser refs
+  const eraserX = useRef(0)
+  const eraserY = useRef(0)
+  const eraserRadius = useRef(25)
+  const lastEraserX = useRef(0)
+  const lastEraserY = useRef(0)
+  
   // Shake detection
   const lastAccel = useRef({ x: 0, y: 0, z: 0 })
   const shakeCount = useRef(0)
   const lastShakeTime = useRef(0)
   const shakeDecayTimer = useRef<NodeJS.Timeout | null>(null)
   
-  // Color toggle shake detection
+  // Eraser activation: 3 shakes within 60 seconds
+  const eraserShakeTimes = useRef<number[]>([])
+  
+  // Color toggle
   const colorShakeCount = useRef(0)
   const lastColorShakeTime = useRef(0)
   
-  // Gradient animation
+  // Gradient
   const gradientHue = useRef(Math.random() * 360)
-  
-  // Color mode ref
   const colorModeRef = useRef<ColorMode>('gradient')
+  const gameModeRef = useRef<GameMode>('draw')
   
   // Orientation
   useEffect(() => {
@@ -72,20 +86,33 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', check)
   }, [])
   
-  // Update pointer position
+  // Update pointer
   const updatePointer = useCallback(() => {
     const p = pointerRef.current
     if (p) {
-      p.style.left = `${penX.current}px`
-      p.style.top = `${penY.current}px`
+      const x = gameModeRef.current === 'eraser' ? eraserX.current : penX.current
+      const y = gameModeRef.current === 'eraser' ? eraserY.current : penY.current
+      p.style.left = `${x}px`
+      p.style.top = `${y}px`
+      
+      // Change pointer size for eraser mode
+      if (gameModeRef.current === 'eraser') {
+        p.style.width = `${eraserRadius.current * 2}px`
+        p.style.height = `${eraserRadius.current * 2}px`
+        p.style.background = 'rgba(255,255,255,0.5)'
+        p.style.border = '2px solid rgba(0,0,0,0.5)'
+      } else {
+        p.style.width = '8px'
+        p.style.height = '8px'
+        p.style.background = colorModeRef.current === 'gradient' ? '#FF6B6B' : 'black'
+        p.style.border = ''
+      }
     }
   }, [])
   
   // Get stroke color
   const getStrokeColor = useCallback(() => {
-    if (colorModeRef.current === 'normal') {
-      return 'rgba(25, 25, 25, 0.9)'
-    }
+    if (colorModeRef.current === 'normal') return 'rgba(25, 25, 25, 0.9)'
     gradientHue.current = (gradientHue.current + 1) % 360
     const c = hslToRgb(gradientHue.current, 70, 55)
     return `rgba(${c.r}, ${c.g}, ${c.b}, 0.9)`
@@ -116,10 +143,15 @@ export default function EtchASketch() {
     lastPenX.current = penX.current
     lastPenY.current = penY.current
     
+    eraserX.current = rect.width / 2
+    eraserY.current = rect.height / 2
+    lastEraserX.current = eraserX.current
+    lastEraserY.current = eraserY.current
+    
     updatePointer()
   }, [updatePointer])
   
-  // ERASE SCREEN - Like original
+  // ERASE SCREEN (full erase by shaking)
   const eraseScreen = useCallback(() => {
     if (isErasing) return
     setIsErasing(true)
@@ -135,10 +167,7 @@ export default function EtchASketch() {
       return
     }
     
-    // Shake animation like original
-    if (toy) {
-      toy.classList.add('shaking')
-    }
+    if (toy) toy.classList.add('shaking')
     
     let opacity = 0
     const fade = setInterval(() => {
@@ -150,7 +179,6 @@ export default function EtchASketch() {
         if (toy) toy.classList.remove('shaking')
         setIsErasing(false)
         setShowDustBar(false)
-        // Reset pen
         penX.current = canvas.width / 2
         penY.current = canvas.height / 2
         lastPenX.current = penX.current
@@ -159,6 +187,21 @@ export default function EtchASketch() {
       }
     }, 50)
   }, [isErasing, updatePointer])
+  
+  // Erase part of drawing (eraser mode)
+  const erasePart = useCallback((x: number, y: number) => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!ctx) return
+    
+    // Erase by drawing with background color
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(x, y, eraserRadius.current, 0, Math.PI * 2)
+    ctx.fillStyle = '#c4c4c4'
+    ctx.fill()
+    ctx.restore()
+  }, [])
   
   // Toggle color mode
   const toggleColorMode = useCallback(() => {
@@ -169,13 +212,53 @@ export default function EtchASketch() {
     lastColorShakeTime.current = 0
   }, [])
   
+  // Toggle eraser mode
+  const toggleEraserMode = useCallback(() => {
+    const newMode = gameModeRef.current === 'draw' ? 'eraser' : 'draw'
+    gameModeRef.current = newMode
+    setGameMode(newMode)
+    setShowEraserPanel(false)
+    setEraserSelectorY(0)
+    
+    if (newMode === 'eraser') {
+      // Initialize eraser position
+      const canvas = canvasRef.current
+      if (canvas) {
+        eraserX.current = canvas.width / 2
+        eraserY.current = canvas.height / 2
+      }
+    }
+    
+    updatePointer()
+    eraserShakeTimes.current = []
+  }, [updatePointer])
+  
+  // Check for eraser activation (3 shakes within 60 seconds)
+  const checkEraserActivation = useCallback(() => {
+    const now = Date.now()
+    eraserShakeTimes.current.push(now)
+    
+    // Keep only shakes from last 60 seconds
+    eraserShakeTimes.current = eraserShakeTimes.current.filter(t => now - t < 60000)
+    
+    // If 3 or more shakes within 60 seconds, show eraser panel
+    if (eraserShakeTimes.current.length >= 3 && gameModeRef.current === 'draw') {
+      setShowEraserPanel(true)
+      setEraserSelectorY(0)
+      eraserShakeTimes.current = []
+    }
+  }, [])
+  
   // Handle shake
   const onShakeDetected = useCallback(() => {
     if (isErasing) return
     
     const now = Date.now()
     
-    // ERASE: continuous shaking without pause
+    // Check for eraser activation first
+    checkEraserActivation()
+    
+    // ERASE: continuous shaking
     if (now - lastShakeTime.current < 300) {
       shakeCount.current++
     } else {
@@ -183,7 +266,6 @@ export default function EtchASketch() {
     }
     lastShakeTime.current = now
     
-    // Show and update dust bar
     setShowDustBar(true)
     const progress = Math.min(100, shakeCount.current * 10)
     setDustProgress(progress)
@@ -193,7 +275,6 @@ export default function EtchASketch() {
       return
     }
     
-    // Decay
     if (shakeDecayTimer.current) clearTimeout(shakeDecayTimer.current)
     shakeDecayTimer.current = setTimeout(() => {
       const decay = setInterval(() => {
@@ -218,9 +299,9 @@ export default function EtchASketch() {
       }
     }
     lastColorShakeTime.current = now
-  }, [isErasing, eraseScreen, toggleColorMode])
+  }, [isErasing, eraseScreen, checkEraserActivation, toggleColorMode])
   
-  // Game loop - EXACTLY like original
+  // Game loop
   useEffect(() => {
     if (!isStarted) return
     
@@ -232,15 +313,70 @@ export default function EtchASketch() {
         return
       }
       
-      // Smooth interpolation like original
+      // Smooth interpolation
       vxMove.current += (targetVxMove.current - vxMove.current) * 0.15
       vyMove.current += (targetVyMove.current - vyMove.current) * 0.15
       vxDraw.current += (targetVxDraw.current - vxDraw.current) * 0.20
       vyDraw.current += (targetVyDraw.current - vyDraw.current) * 0.20
       
+      // ERASER PANEL SELECTION
+      if (showEraserPanel) {
+        // Move joystick controls selector
+        if (Math.abs(vyMove.current) > 0.5) {
+          const newY = eraserSelectorY + vyMove.current * 0.1
+          setEraserSelectorY(Math.max(-1, Math.min(1, newY)))
+        }
+        
+        // Draw joystick confirms selection
+        if (Math.abs(vxDraw.current) > 2 || Math.abs(vyDraw.current) > 2) {
+          if (eraserSelectorY <= 0) {
+            // Top position = activate eraser
+            toggleEraserMode()
+          } else {
+            // Bottom position = cancel
+            setShowEraserPanel(false)
+            setEraserSelectorY(0)
+          }
+        }
+        
+        rafRef.current = requestAnimationFrame(gameLoop)
+        return
+      }
+      
+      // ERASER MODE
+      if (gameModeRef.current === 'eraser') {
+        // Move joystick = move eraser position
+        if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
+          eraserX.current += vxMove.current
+          eraserY.current += vyMove.current
+          eraserX.current = Math.max(eraserRadius.current, Math.min(canvas.width - eraserRadius.current, eraserX.current))
+          eraserY.current = Math.max(eraserRadius.current, Math.min(canvas.height - eraserRadius.current, eraserY.current))
+          updatePointer()
+        }
+        
+        // Draw joystick = erase when moving (drag gesture)
+        if (Math.abs(vxDraw.current) > 0.5 || Math.abs(vyDraw.current) > 0.5) {
+          // Move eraser and erase
+          eraserX.current += vxDraw.current * 0.5
+          eraserY.current += vyDraw.current * 0.5
+          eraserX.current = Math.max(eraserRadius.current, Math.min(canvas.width - eraserRadius.current, eraserX.current))
+          eraserY.current = Math.max(eraserRadius.current, Math.min(canvas.height - eraserRadius.current, eraserY.current))
+          
+          // Erase along the path
+          erasePart(eraserX.current, eraserY.current)
+          updatePointer()
+        }
+        
+        // Exit eraser mode: shake gesture detected
+        // (handled by shake detection)
+        
+        rafRef.current = requestAnimationFrame(gameLoop)
+        return
+      }
+      
+      // DRAW MODE (normal)
       let moved = false
       
-      // Move joystick - like original (moves pen without drawing)
       if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
         penX.current += vxMove.current
         penY.current += vyMove.current
@@ -249,7 +385,6 @@ export default function EtchASketch() {
         lastPenY.current = penY.current
       }
       
-      // Draw joystick - like original (draws lines)
       if (Math.abs(vxDraw.current) > 0.1 || Math.abs(vyDraw.current) > 0.1) {
         penX.current += vxDraw.current
         penY.current += vyDraw.current
@@ -278,9 +413,9 @@ export default function EtchASketch() {
     initCanvas()
     
     return () => cancelAnimationFrame(rafRef.current)
-  }, [isStarted, initCanvas, updatePointer, getStrokeColor])
+  }, [isStarted, initCanvas, updatePointer, getStrokeColor, showEraserPanel, eraserSelectorY, toggleEraserMode, erasePart])
   
-  // Joystick handlers - like original
+  // Joystick handlers
   const createJoystickHandlers = useCallback((type: 'move' | 'draw') => {
     let isActive = false
     let centerX = 0
@@ -322,7 +457,6 @@ export default function EtchASketch() {
         targetVxMove.current = Math.cos(angle) * speed
         targetVyMove.current = Math.sin(angle) * speed
       } else {
-        // Draw joystick - horizontal OR vertical only (like original)
         if (Math.abs(dx) > Math.abs(dy)) {
           targetVxDraw.current = Math.sign(dx) * speed
           targetVyDraw.current = 0
@@ -415,7 +549,6 @@ export default function EtchASketch() {
       if (elem.requestFullscreen) await elem.requestFullscreen()
     } catch {}
     
-    // iOS permission
     if (typeof DeviceMotionEvent !== 'undefined' && 
         typeof (DeviceMotionEvent as any).requestPermission === 'function') {
       try {
@@ -449,7 +582,7 @@ export default function EtchASketch() {
       {/* Orientation */}
       {!isLandscape && (
         <div className="absolute inset-0 bg-black/98 text-white z-[99999] flex flex-col justify-center items-center text-center p-5">
-          <svg className="w-20 h-20 mb-4" viewBox="0 0 24 24" fill="currentColor" style={{ animation: 'rotate 2s infinite ease-in-out' }}>
+          <svg className="w-20 h-20 mb-4" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16,1H8C6.34,1 5,2.34 5,4V20C5,21.66 6.34,23 8,23H16C17.66,23 19,21.66 19,20V4C19,2.34 17.66,1 16,1M17,19H7V5H17V19Z"/>
           </svg>
           <h2 className="text-xl font-bold">Mode Paysage Requis</h2>
@@ -465,9 +598,16 @@ export default function EtchASketch() {
         }}
       >
         {/* Instructions */}
-        {isStarted && (
-          <div className="absolute top-[1.5vh] text-white/80 text-[1.6vh] font-bold tracking-wider z-10">
-            Secouez pour effacer | Double-tap aussi
+        {isStarted && !showEraserPanel && gameMode === 'draw' && (
+          <div className="absolute top-[1.5vh] text-white/80 text-[1.4vh] font-bold tracking-wider z-10 text-center">
+            Secouez pour effacer | 3 secousses = Gomme
+          </div>
+        )}
+        
+        {/* Eraser mode indicator */}
+        {gameMode === 'eraser' && (
+          <div className="absolute top-[1.5vh] text-white text-[1.6vh] font-bold tracking-wider z-10 bg-black/50 px-4 py-1 rounded-full">
+            ✏️ MODE GOMME - Secouez pour quitter
           </div>
         )}
         
@@ -476,7 +616,7 @@ export default function EtchASketch() {
           className="relative w-[90%] h-[68%] bg-[#d4d4d4] rounded-[2.5vh] p-[1.5vh]"
           style={{ boxShadow: 'inset 6px 6px 18px rgba(0,0,0,0.5), inset -6px -6px 18px rgba(255,255,255,0.9)' }}
         >
-          {/* Canvas wrapper - C'EST ICI que wrapperRef doit être */}
+          {/* Canvas wrapper */}
           <div 
             ref={wrapperRef}
             className="relative w-full h-full rounded-[1.5vh] overflow-hidden" 
@@ -491,7 +631,7 @@ export default function EtchASketch() {
               }}
             />
             
-            {/* Pointer - centré avec translate(-50%, -50%) */}
+            {/* Pointer */}
             <div
               ref={pointerRef}
               className="absolute w-2 h-2 bg-black rounded-full pointer-events-none z-10"
@@ -500,6 +640,33 @@ export default function EtchASketch() {
                 boxShadow: '0 0 0 2px rgba(255,255,255,0.7)'
               }}
             />
+            
+            {/* Eraser Panel */}
+            {showEraserPanel && (
+              <div className="absolute inset-0 bg-black/70 flex flex-col justify-center items-center z-50">
+                <div className="bg-white/90 rounded-2xl p-6 text-center shadow-2xl">
+                  <div className="text-2xl mb-4">🧹</div>
+                  <h3 className="text-xl font-bold text-black mb-4">GOMME</h3>
+                  <p className="text-sm text-black/70 mb-4">Utilisez le joystick gauche pour sélectionner</p>
+                  
+                  {/* Selector */}
+                  <div className="flex flex-col gap-2">
+                    <div 
+                      className={`px-6 py-3 rounded-lg text-lg font-bold transition-all ${eraserSelectorY <= 0 ? 'bg-[#d10a0a] text-white scale-105' : 'bg-gray-200 text-black'}`}
+                    >
+                      ✓ Activer
+                    </div>
+                    <div 
+                      className={`px-6 py-3 rounded-lg text-lg font-bold transition-all ${eraserSelectorY > 0 ? 'bg-gray-500 text-white scale-105' : 'bg-gray-200 text-black'}`}
+                    >
+                      ✗ Annuler
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-black/50 mt-4">Joystick droit pour confirmer</p>
+                </div>
+              </div>
+            )}
             
             {/* Dust bar */}
             {showDustBar && (
@@ -546,7 +713,7 @@ export default function EtchASketch() {
         {/* Joysticks */}
         {isStarted && (
           <>
-            {/* Move */}
+            {/* Move joystick */}
             <div
               className="absolute bottom-[3vh] left-[4vw] w-[18vh] h-[18vh] min-w-[100px] min-h-[100px] max-w-[150px] max-h-[150px] rounded-full bg-black/10 flex justify-center items-center"
               style={{ boxShadow: 'inset 4px 4px 12px rgba(0,0,0,0.4)' }}
@@ -561,14 +728,21 @@ export default function EtchASketch() {
               <div
                 ref={moveKnobRef}
                 className="w-[65%] h-[65%] rounded-full flex justify-center items-center cursor-grab active:cursor-grabbing"
-                style={{ background: 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)' }}
+                style={{ 
+                  background: gameMode === 'eraser' 
+                    ? 'linear-gradient(135deg, #fff, #ccc)' 
+                    : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', 
+                  boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)' 
+                }}
               >
                 <div className="w-[35%] h-[35%] rounded-full bg-[#d0d0d0]" style={{ boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' }} />
               </div>
-              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>POSITION</div>
+              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>
+                {gameMode === 'eraser' ? 'DEPLACER' : 'POSITION'}
+              </div>
             </div>
             
-            {/* Draw */}
+            {/* Draw/Erase joystick */}
             <div
               className="absolute bottom-[3vh] right-[4vw] w-[18vh] h-[18vh] min-w-[100px] min-h-[100px] max-w-[150px] max-h-[150px] rounded-full bg-black/10 flex justify-center items-center"
               style={{ boxShadow: 'inset 4px 4px 12px rgba(0,0,0,0.4)' }}
@@ -584,15 +758,25 @@ export default function EtchASketch() {
                 ref={drawKnobRef}
                 className="w-[65%] h-[65%] rounded-full flex justify-center items-center cursor-grab active:cursor-grabbing"
                 style={{ 
-                  background: colorMode === 'gradient' 
-                    ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)' 
-                    : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', 
+                  background: gameMode === 'eraser' 
+                    ? 'linear-gradient(135deg, #fff, #aaa)' 
+                    : colorMode === 'gradient' 
+                      ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)' 
+                      : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', 
                   boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)' 
                 }}
               >
-                <div className="w-[35%] h-[35%] rounded-full" style={{ background: colorMode === 'gradient' ? 'rgba(255,255,255,0.5)' : '#d0d0d0', boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' }} />
+                <div 
+                  className="w-[35%] h-[35%] rounded-full" 
+                  style={{ 
+                    background: gameMode === 'eraser' || colorMode === 'gradient' ? 'rgba(255,255,255,0.5)' : '#d0d0d0', 
+                    boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' 
+                  }} 
+                />
               </div>
-              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>DESSIN</div>
+              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>
+                {gameMode === 'eraser' ? 'EFFACER' : 'DESSIN'}
+              </div>
             </div>
           </>
         )}
