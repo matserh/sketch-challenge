@@ -124,8 +124,12 @@ export default function EtchASketch() {
     return `rgba(${c.r}, ${c.g}, ${c.b}, 0.9)`
   }, [])
   
+  // Track if canvas was already initialized
+  const canvasInitialized = useRef(false)
+  const lastCanvasSize = useRef({ width: 0, height: 0 })
+  
   // Init canvas
-  const initCanvas = useCallback(() => {
+  const initCanvas = useCallback((forceResize = false) => {
     const canvas = canvasRef.current
     const wrapper = wrapperRef.current
     if (!canvas || !wrapper) return
@@ -133,26 +137,39 @@ export default function EtchASketch() {
     const rect = wrapper.getBoundingClientRect()
     if (rect.width === 0) return
     
-    canvas.width = rect.width
-    canvas.height = rect.height
+    // Only resize if dimensions changed or forced
+    const needsResize = forceResize || 
+      lastCanvasSize.current.width !== rect.width || 
+      lastCanvasSize.current.height !== rect.height
     
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (needsResize) {
+      canvas.width = rect.width
+      canvas.height = rect.height
+      lastCanvasSize.current = { width: rect.width, height: rect.height }
+      
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'square'
+      ctx.lineWidth = 3.5
+    }
     
-    ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
-    ctx.lineJoin = 'round'
-    ctx.lineCap = 'square'
-    ctx.lineWidth = 3.5
-    
-    penX.current = rect.width / 2
-    penY.current = rect.height / 2
-    lastPenX.current = penX.current
-    lastPenY.current = penY.current
-    
-    eraserX.current = rect.width / 2
-    eraserY.current = rect.height / 2
-    lastEraserX.current = eraserX.current
-    lastEraserY.current = eraserY.current
+    // Only reset pen position on first init
+    if (!canvasInitialized.current) {
+      penX.current = rect.width / 2
+      penY.current = rect.height / 2
+      lastPenX.current = penX.current
+      lastPenY.current = penY.current
+      
+      eraserX.current = rect.width / 2
+      eraserY.current = rect.height / 2
+      lastEraserX.current = eraserX.current
+      lastEraserY.current = eraserY.current
+      
+      canvasInitialized.current = true
+    }
     
     updatePointer()
   }, [updatePointer])
@@ -455,10 +472,13 @@ export default function EtchASketch() {
     }
     
     rafRef.current = requestAnimationFrame(gameLoop)
-    initCanvas()
+    // Only init canvas once when started, not on every showEraserPanel change
+    if (!canvasInitialized.current) {
+      initCanvas()
+    }
     
     return () => cancelAnimationFrame(rafRef.current)
-  }, [isStarted, initCanvas, updatePointer, getStrokeColor, showEraserPanel, eraserSelectorY, toggleEraserMode, erasePart])
+  }, [isStarted, initCanvas, updatePointer, getStrokeColor, toggleEraserMode, erasePart])
   
   // Joystick handlers
   const createJoystickHandlers = useCallback((type: 'move' | 'draw') => {
@@ -608,7 +628,7 @@ export default function EtchASketch() {
   // Resize
   useEffect(() => {
     if (!isStarted) return
-    const handle = () => setTimeout(initCanvas, 100)
+    const handle = () => setTimeout(() => initCanvas(true), 100)
     window.addEventListener('resize', handle)
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
