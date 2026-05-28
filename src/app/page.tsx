@@ -1,9 +1,16 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 
 type ColorMode = 'normal' | 'gradient'
 type GameMode = 'draw' | 'eraser'
+
+interface User {
+  id: string
+  name: string
+  email: string
+}
 
 // HSL to RGB
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
@@ -16,6 +23,8 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
 }
 
 export default function EtchASketch() {
+  const router = useRouter()
+  
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -24,7 +33,6 @@ export default function EtchASketch() {
   const drawKnobRef = useRef<HTMLDivElement>(null)
   const toyRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number>(0)
-  const eraserCanvasRef = useRef<HTMLCanvasElement>(null)
   
   // State
   const [isStarted, setIsStarted] = useState(false)
@@ -35,6 +43,21 @@ export default function EtchASketch() {
   const [colorMode, setColorMode] = useState<ColorMode>('gradient')
   const [gameMode, setGameMode] = useState<GameMode>('draw')
   const [showMenu, setShowMenu] = useState(false)
+  
+  // Auth state
+  const [user, setUser] = useState<User | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authForm, setAuthForm] = useState({ email: '', name: '', password: '' })
+  const [authError, setAuthError] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  
+  // Save state
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saveTitle, setSaveTitle] = useState('')
+  const [savePublic, setSavePublic] = useState(true)
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [saveError, setSaveError] = useState('')
   
   // Pen refs
   const penX = useRef(0)
@@ -65,7 +88,7 @@ export default function EtchASketch() {
   const lastShakeTime = useRef(0)
   const shakeDecayTimer = useRef<NodeJS.Timeout | null>(null)
   
-  // Color toggle: 2 shakes with pause
+  // Color toggle
   const colorShakeCount = useRef(0)
   const lastColorShakeTime = useRef(0)
   
@@ -73,6 +96,24 @@ export default function EtchASketch() {
   const gradientHue = useRef(Math.random() * 360)
   const colorModeRef = useRef<ColorMode>('gradient')
   const gameModeRef = useRef<GameMode>('draw')
+  
+  // Canvas tracking
+  const canvasInitialized = useRef(false)
+  const lastCanvasSize = useRef({ width: 0, height: 0 })
+  
+  // Fetch user on mount
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        setUser(data.user)
+      } catch {
+        setUser(null)
+      }
+    }
+    fetchUser()
+  }, [])
   
   // Orientation
   useEffect(() => {
@@ -91,7 +132,6 @@ export default function EtchASketch() {
       p.style.left = `${x}px`
       p.style.top = `${y}px`
       
-      // Change pointer size for eraser mode
       if (gameModeRef.current === 'eraser') {
         p.style.width = `${eraserRadius.current * 2}px`
         p.style.height = `${eraserRadius.current * 2}px`
@@ -114,10 +154,6 @@ export default function EtchASketch() {
     return `rgba(${c.r}, ${c.g}, ${c.b}, 0.9)`
   }, [])
   
-  // Track if canvas was already initialized
-  const canvasInitialized = useRef(false)
-  const lastCanvasSize = useRef({ width: 0, height: 0 })
-  
   // Init canvas
   const initCanvas = useCallback((forceResize = false) => {
     const canvas = canvasRef.current
@@ -127,26 +163,39 @@ export default function EtchASketch() {
     const rect = wrapper.getBoundingClientRect()
     if (rect.width === 0) return
     
-    // Only resize if dimensions changed or forced
     const needsResize = forceResize || 
       lastCanvasSize.current.width !== rect.width || 
       lastCanvasSize.current.height !== rect.height
     
     if (needsResize) {
+      // Save existing drawing before resize
+      let imageData: string | null = null
+      const ctx = canvas.getContext('2d')
+      if (canvas.width > 0 && canvas.height > 0) {
+        imageData = canvas.toDataURL()
+      }
+      
       canvas.width = rect.width
       canvas.height = rect.height
       lastCanvasSize.current = { width: rect.width, height: rect.height }
       
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      
-      ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
-      ctx.lineJoin = 'round'
-      ctx.lineCap = 'square'
-      ctx.lineWidth = 3.5
+      if (ctx) {
+        ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
+        ctx.lineJoin = 'round'
+        ctx.lineCap = 'square'
+        ctx.lineWidth = 3.5
+        
+        // Restore drawing if we had one
+        if (imageData) {
+          const img = new Image()
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0)
+          }
+          img.src = imageData
+        }
+      }
     }
     
-    // Only reset pen position on first init
     if (!canvasInitialized.current) {
       penX.current = rect.width / 2
       penY.current = rect.height / 2
@@ -164,7 +213,7 @@ export default function EtchASketch() {
     updatePointer()
   }, [updatePointer])
   
-  // ERASE SCREEN (full erase by shaking)
+  // Erase screen
   const eraseScreen = useCallback(() => {
     if (isErasing) return
     setIsErasing(true)
@@ -201,13 +250,12 @@ export default function EtchASketch() {
     }, 50)
   }, [isErasing, updatePointer])
   
-  // Erase part of drawing (eraser mode)
+  // Erase part
   const erasePart = useCallback((x: number, y: number) => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!ctx) return
     
-    // Erase by drawing with background color
     ctx.save()
     ctx.beginPath()
     ctx.arc(x, y, eraserRadius.current, 0, Math.PI * 2)
@@ -255,13 +303,11 @@ export default function EtchASketch() {
     
     const now = Date.now()
     
-    // IF IN ERASER MODE: single shake exits
     if (gameModeRef.current === 'eraser') {
       exitEraserMode()
       return
     }
     
-    // FULL ERASE: continuous fast shaking (only in draw mode)
     if (now - lastShakeTime.current < 250) {
       shakeCount.current++
     } else {
@@ -291,7 +337,6 @@ export default function EtchASketch() {
       }, 50)
     }, 300)
     
-    // COLOR TOGGLE: 2 shakes with shorter pause (300-800ms)
     const timeSinceColor = now - lastColorShakeTime.current
     if (lastColorShakeTime.current === 0 || timeSinceColor > 1200) {
       colorShakeCount.current = 1
@@ -316,15 +361,12 @@ export default function EtchASketch() {
         return
       }
       
-      // Smooth interpolation
       vxMove.current += (targetVxMove.current - vxMove.current) * 0.15
       vyMove.current += (targetVyMove.current - vyMove.current) * 0.15
       vxDraw.current += (targetVxDraw.current - vxDraw.current) * 0.20
       vyDraw.current += (targetVyDraw.current - vyDraw.current) * 0.20
       
-      // ERASER MODE
       if (gameModeRef.current === 'eraser') {
-        // Move joystick = move eraser position
         if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
           eraserX.current += vxMove.current
           eraserY.current += vyMove.current
@@ -333,27 +375,20 @@ export default function EtchASketch() {
           updatePointer()
         }
         
-        // Draw joystick = erase when moving (drag gesture)
         if (Math.abs(vxDraw.current) > 0.5 || Math.abs(vyDraw.current) > 0.5) {
-          // Move eraser and erase
           eraserX.current += vxDraw.current * 0.5
           eraserY.current += vyDraw.current * 0.5
           eraserX.current = Math.max(eraserRadius.current, Math.min(canvas.width - eraserRadius.current, eraserX.current))
           eraserY.current = Math.max(eraserRadius.current, Math.min(canvas.height - eraserRadius.current, eraserY.current))
           
-          // Erase along the path
           erasePart(eraserX.current, eraserY.current)
           updatePointer()
         }
-        
-        // Exit eraser mode: shake gesture detected
-        // (handled by shake detection)
         
         rafRef.current = requestAnimationFrame(gameLoop)
         return
       }
       
-      // DRAW MODE (normal)
       let moved = false
       
       if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
@@ -389,13 +424,12 @@ export default function EtchASketch() {
     }
     
     rafRef.current = requestAnimationFrame(gameLoop)
-    // Only init canvas once when started
     if (!canvasInitialized.current) {
       initCanvas()
     }
     
     return () => cancelAnimationFrame(rafRef.current)
-  }, [isStarted, initCanvas, updatePointer, getStrokeColor, toggleEraserMode, erasePart])
+  }, [isStarted, initCanvas, updatePointer, getStrokeColor, erasePart])
   
   // Joystick handlers
   const createJoystickHandlers = useCallback((type: 'move' | 'draw') => {
@@ -550,6 +584,110 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
   
+  // Auth submit
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAuthError('')
+    setAuthLoading(true)
+    
+    try {
+      const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register'
+      const body = authMode === 'login' 
+        ? { email: authForm.email, password: authForm.password }
+        : authForm
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setAuthError(data.error || 'Erreur')
+        return
+      }
+      
+      setUser(data)
+      setShowAuthModal(false)
+      setAuthForm({ email: '', name: '', password: '' })
+    } catch {
+      setAuthError('Erreur de connexion')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+  
+  // Logout
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    setUser(null)
+    setShowMenu(false)
+  }
+  
+  // Open save modal
+  const openSaveModal = () => {
+    if (!user) {
+      setShowAuthModal(true)
+      return
+    }
+    setSaveTitle('')
+    setSavePublic(true)
+    setSaveError('')
+    setShowSaveModal(true)
+    setShowMenu(false)
+  }
+  
+  // Save drawing
+  const handleSaveDrawing = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    const canvas = canvasRef.current
+    if (!canvas) {
+      setSaveError('Erreur: canvas non trouvé')
+      return
+    }
+    
+    // Get the actual image data from canvas
+    const imageData = canvas.toDataURL('image/png')
+    
+    if (!imageData || imageData === 'data:,') {
+      setSaveError('Erreur: impossible de capturer le dessin')
+      return
+    }
+    
+    setSaveLoading(true)
+    setSaveError('')
+    
+    try {
+      const res = await fetch('/api/drawings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: saveTitle || 'Mon dessin',
+          imageData,
+          isPublic: savePublic
+        })
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setSaveError(data.error || 'Erreur lors de la sauvegarde')
+        return
+      }
+      
+      setShowSaveModal(false)
+      // Show success message or navigate to classement
+      router.push('/classement')
+    } catch {
+      setSaveError('Erreur de connexion')
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+  
   return (
     <div className="fixed inset-0 bg-[#080808] flex justify-center items-center overflow-hidden touch-none select-none">
       <style jsx global>{`
@@ -584,10 +722,9 @@ export default function EtchASketch() {
           boxShadow: 'inset 15px 15px 30px rgba(255,255,255,0.2), inset -15px -15px 30px rgba(0,0,0,0.5), 0 20px 50px rgba(0,0,0,0.9)'
         }}
       >
-        {/* Top bar with menu */}
+        {/* Top bar */}
         {isStarted && (
           <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-20 flex justify-between items-center">
-            {/* Instructions */}
             {gameMode === 'draw' && (
               <div 
                 className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
@@ -597,7 +734,6 @@ export default function EtchASketch() {
               </div>
             )}
             
-            {/* Eraser mode indicator */}
             {gameMode === 'eraser' && (
               <div 
                 className="text-white text-[1.2vh] font-bold tracking-wider px-3 py-1.5 rounded-full flex items-center gap-2"
@@ -619,7 +755,7 @@ export default function EtchASketch() {
               </div>
             )}
             
-            {/* Hamburger menu button */}
+            {/* Menu button */}
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="w-10 h-10 rounded-full flex flex-col justify-center items-center gap-1 transition-all duration-300"
@@ -654,7 +790,54 @@ export default function EtchASketch() {
               border: '1px solid rgba(212,175,55,0.3)'
             }}
           >
-            {/* Eraser button - toggle */}
+            {/* User info */}
+            {user && (
+              <div className="px-4 py-2 border-b border-white/10">
+                <div className="text-white text-sm font-bold">{user.name}</div>
+                <div className="text-white/50 text-[10px]">{user.email}</div>
+              </div>
+            )}
+            
+            {/* Classement */}
+            <button
+              onClick={() => {
+                setShowMenu(false)
+                router.push('/classement')
+              }}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+            >
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #d4af37, #b8962e)' }}
+              >
+                <span className="text-black text-sm">🏆</span>
+              </div>
+              <div className="text-left">
+                <div className="text-white text-sm font-bold">Classement</div>
+                <div className="text-white/50 text-[10px]">Voir les dessins</div>
+              </div>
+            </button>
+            
+            {/* Save */}
+            <button
+              onClick={openSaveModal}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+            >
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
+              >
+                <span className="text-white text-sm">💾</span>
+              </div>
+              <div className="text-left">
+                <div className="text-white text-sm font-bold">
+                  {user ? 'Sauvegarder' : 'Connexion requise'}
+                </div>
+                <div className="text-white/50 text-[10px]">Partager votre dessin</div>
+              </div>
+            </button>
+            
+            {/* Eraser toggle */}
             <button
               onClick={() => {
                 toggleEraserMode()
@@ -683,6 +866,37 @@ export default function EtchASketch() {
                 </div>
               </div>
             </button>
+            
+            {/* Login/Logout */}
+            {user ? (
+              <button
+                onClick={handleLogout}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors border-t border-white/10"
+              >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-600/80">
+                  <span className="text-white text-sm">🚪</span>
+                </div>
+                <div className="text-left">
+                  <div className="text-white text-sm font-bold">Déconnexion</div>
+                </div>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setShowMenu(false)
+                  setShowAuthModal(true)
+                }}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors border-t border-white/10"
+              >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-600/80">
+                  <span className="text-white text-sm">👤</span>
+                </div>
+                <div className="text-left">
+                  <div className="text-white text-sm font-bold">Connexion</div>
+                  <div className="text-white/50 text-[10px]">Sauvegarder vos dessins</div>
+                </div>
+              </button>
+            )}
           </div>
         )}
         
@@ -691,7 +905,6 @@ export default function EtchASketch() {
           className="relative w-[90%] h-[68%] bg-[#d4d4d4] rounded-[2.5vh] p-[1.5vh]"
           style={{ boxShadow: 'inset 6px 6px 18px rgba(0,0,0,0.5), inset -6px -6px 18px rgba(255,255,255,0.9)' }}
         >
-          {/* Canvas wrapper */}
           <div 
             ref={wrapperRef}
             className="relative w-full h-full rounded-[1.5vh] overflow-hidden" 
@@ -829,6 +1042,143 @@ export default function EtchASketch() {
           </>
         )}
       </div>
+      
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div 
+            className="w-[90vw] max-w-[400px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl overflow-hidden"
+            style={{ maxHeight: '80vh' }}
+          >
+            <div className="bg-black/30 p-3 flex justify-between items-center">
+              <h2 className="text-white text-lg font-bold">
+                {authMode === 'login' ? 'Connexion' : 'Inscription'}
+              </h2>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="text-white/60 hover:text-white text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <form onSubmit={handleAuthSubmit} className="p-4 space-y-3">
+              {authError && (
+                <div className="text-red-400 text-sm text-center">{authError}</div>
+              )}
+              
+              <input
+                type="email"
+                placeholder="Email"
+                value={authForm.email}
+                onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+                required
+              />
+              
+              {authMode === 'register' && (
+                <input
+                  type="text"
+                  placeholder="Nom"
+                  value={authForm.name}
+                  onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+                  required
+                />
+              )}
+              
+              <input
+                type="password"
+                placeholder="Mot de passe"
+                value={authForm.password}
+                onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+                required
+              />
+              
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2 bg-[#d4af37] text-black font-bold rounded-lg hover:bg-[#e5c048] transition-colors disabled:opacity-50"
+              >
+                {authLoading ? 'Chargement...' : (authMode === 'login' ? 'Se connecter' : "S'inscrire")}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode(authMode === 'login' ? 'register' : 'login')
+                  setAuthError('')
+                }}
+                className="w-full text-white/60 text-sm hover:text-white"
+              >
+                {authMode === 'login' ? "Pas de compte? S'inscrire" : 'Déjà un compte? Se connecter'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div 
+            className="w-[90vw] max-w-[500px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl overflow-hidden"
+            style={{ maxHeight: '85vh' }}
+          >
+            <div className="bg-black/30 p-3 flex justify-between items-center">
+              <h2 className="text-white text-lg font-bold">Sauvegarder le dessin</h2>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="text-white/60 hover:text-white text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveDrawing} className="p-4 space-y-3">
+              {/* Preview */}
+              <div className="w-full aspect-video bg-[#c4c4c4] rounded-lg overflow-hidden">
+                <img
+                  src={canvasRef.current?.toDataURL('image/png') || ''}
+                  alt="Aperçu"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              
+              {saveError && (
+                <div className="text-red-400 text-sm text-center">{saveError}</div>
+              )}
+              
+              <input
+                type="text"
+                placeholder="Titre du dessin"
+                value={saveTitle}
+                onChange={e => setSaveTitle(e.target.value)}
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+              />
+              
+              <label className="flex items-center gap-2 text-white">
+                <input
+                  type="checkbox"
+                  checked={savePublic}
+                  onChange={e => setSavePublic(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Rendre public (visible dans le classement)</span>
+              </label>
+              
+              <button
+                type="submit"
+                disabled={saveLoading}
+                className="w-full py-2 bg-[#22c55e] text-white font-bold rounded-lg hover:bg-[#16a34a] transition-colors disabled:opacity-50"
+              >
+                {saveLoading ? 'Sauvegarde...' : 'Sauvegarder'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
