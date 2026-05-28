@@ -303,31 +303,53 @@ export default function EtchASketch() {
     
     const now = Date.now()
     
+    // If in eraser mode, single shake exits eraser mode
     if (gameModeRef.current === 'eraser') {
       exitEraserMode()
       return
     }
     
-    if (now - lastShakeTime.current < 250) {
+    // Detect fast continuous shaking for full erase
+    const timeSinceLastShake = now - lastShakeTime.current
+    if (timeSinceLastShake < 300) {
+      // Fast continuous shaking - count for full erase
       shakeCount.current++
+    } else if (timeSinceLastShake >= 300 && timeSinceLastShake <= 800) {
+      // Two shakes with short pause - toggle eraser mode
+      colorShakeCount.current++
+      if (colorShakeCount.current >= 2) {
+        toggleEraserMode()
+        colorShakeCount.current = 0
+        lastColorShakeTime.current = 0
+        return
+      }
     } else {
-      shakeCount.current = Math.max(1, shakeCount.current - 2)
+      // Too long pause - reset
+      shakeCount.current = 1
+      colorShakeCount.current = 1
     }
-    lastShakeTime.current = now
     
+    lastShakeTime.current = now
+    lastColorShakeTime.current = now
+    
+    // Show progress bar for full erase
     setShowDustBar(true)
     const progress = Math.min(100, shakeCount.current * 10)
     setDustProgress(progress)
     
+    // Full erase when progress reaches 100%
     if (progress >= 100) {
       eraseScreen()
+      colorShakeCount.current = 0
       return
     }
     
+    // Decay timer - progress goes down if not shaking
     if (shakeDecayTimer.current) clearTimeout(shakeDecayTimer.current)
     shakeDecayTimer.current = setTimeout(() => {
       const decay = setInterval(() => {
         shakeCount.current = Math.max(0, shakeCount.current - 1)
+        colorShakeCount.current = 0
         const p = shakeCount.current * 10
         setDustProgress(p)
         if (shakeCount.current <= 0) {
@@ -336,18 +358,7 @@ export default function EtchASketch() {
         }
       }, 50)
     }, 300)
-    
-    const timeSinceColor = now - lastColorShakeTime.current
-    if (lastColorShakeTime.current === 0 || timeSinceColor > 1200) {
-      colorShakeCount.current = 1
-    } else if (timeSinceColor >= 300 && timeSinceColor <= 800) {
-      colorShakeCount.current++
-      if (colorShakeCount.current >= 2) {
-        toggleColorMode()
-      }
-    }
-    lastColorShakeTime.current = now
-  }, [isErasing, eraseScreen, exitEraserMode, toggleColorMode])
+  }, [isErasing, eraseScreen, exitEraserMode, toggleEraserMode])
   
   // Game loop
   useEffect(() => {
@@ -730,7 +741,7 @@ export default function EtchASketch() {
                 className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
                 style={{ background: 'rgba(0,0,0,0.3)' }}
               >
-                Secouez vite = Effacer tout
+                2 secousses = Gomme | Vite = Tout effacer
               </div>
             )}
             
