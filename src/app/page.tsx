@@ -2,9 +2,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { auth, db } from '@/lib/firebase'
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth'
-import { collection, addDoc, getDocs, query, orderBy, where, doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 
 type ColorMode = 'normal' | 'gradient'
 type GameMode = 'draw' | 'eraser'
@@ -104,20 +101,16 @@ export default function EtchASketch() {
   const canvasInitialized = useRef(false)
   const lastCanvasSize = useRef({ width: 0, height: 0 })
   
-  // Firebase auth listener
+  // Fetch user on mount
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Artiste',
-          email: firebaseUser.email || ''
-        })
-      } else {
-        setUser(null)
-      }
-    })
-    return () => unsub()
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        setUser(data.user)
+      } catch { setUser(null) }
+    }
+    fetchUser()
   }, [])
   
   // Orientation
@@ -600,7 +593,7 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
   
-  // Auth submit (Firebase)
+  // Auth submit (simple - no password)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError('')
@@ -608,42 +601,36 @@ export default function EtchASketch() {
     
     try {
       if (authMode === 'login') {
-        const cred = await signInWithEmailAndPassword(auth, authForm.email, authForm.password)
-        setUser({
-          id: cred.user.uid,
-          name: cred.user.displayName || 'Artiste',
-          email: cred.user.email || ''
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authForm.email })
         })
+        const data = await res.json()
+        if (!res.ok) { setAuthError(data.error || 'Non trouvé'); return }
+        setUser(data)
       } else {
-        const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password)
-        await updateProfile(cred.user, { displayName: authForm.name })
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          name: authForm.name,
-          email: authForm.email,
-          createdAt: serverTimestamp()
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authForm.email, name: authForm.name })
         })
-        setUser({
-          id: cred.user.uid,
-          name: authForm.name,
-          email: authForm.email
-        })
+        const data = await res.json()
+        if (!res.ok) { setAuthError(data.error || 'Erreur'); return }
+        setUser(data)
       }
       setShowAuthModal(false)
       setAuthForm({ email: '', name: '', password: '' })
-    } catch (err: any) {
-      const msg = err?.code === 'auth/email-already-in-use' ? 'Cet email est déjà utilisé'
-        : err?.code === 'auth/invalid-credential' ? 'Email ou mot de passe incorrect'
-        : err?.code === 'auth/weak-password' ? 'Mot de passe trop faible (6 min.)'
-        : 'Erreur lors de l\'authentification'
-      setAuthError(msg)
+    } catch {
+      setAuthError('Erreur de connexion')
     } finally {
       setAuthLoading(false)
     }
   }
   
-  // Logout (Firebase)
+  // Logout
   const handleLogout = async () => {
-    await signOut(auth)
+    await fetch('/api/auth/logout', { method: 'POST' })
     setUser(null)
     setShowMenu(false)
   }
@@ -661,18 +648,14 @@ export default function EtchASketch() {
     setShowMenu(false)
   }
   
-  // Save drawing (Firebase)
+  // Save drawing
   const handleSaveDrawing = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const canvas = canvasRef.current
-    if (!canvas || !auth.currentUser) {
-      setSaveError('Erreur: canvas non trouvé')
-      return
-    }
+    if (!canvas) { setSaveError('Erreur: canvas non trouvé'); return }
     
     const imageData = canvas.toDataURL('image/png')
-    
     if (!imageData || imageData === 'data:,') {
       setSaveError('Erreur: impossible de capturer le dessin')
       return
@@ -682,35 +665,29 @@ export default function EtchASketch() {
     setSaveError('')
     
     try {
-      // Compress image by drawing to a smaller canvas
+      // Compress
       const img = new Image()
-      await new Promise<void>((resolve) => {
-        img.onload = () => resolve()
-        img.src = imageData
-      })
+      await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = imageData })
       const maxW = 800
       const scale = Math.min(1, maxW / img.width)
-      const offscreen = document.createElement('canvas')
-      offscreen.width = img.width * scale
-      offscreen.height = img.height * scale
-      offscreen.getContext('2d')!.drawImage(img, 0, 0, offscreen.width, offscreen.height)
-      const compressed = offscreen.toDataURL('image/jpeg', 0.7)
+      const off = document.createElement('canvas')
+      off.width = img.width * scale
+      off.height = img.height * scale
+      off.getContext('2d')!.drawImage(img, 0, 0, off.width, off.height)
+      const compressed = off.toDataURL('image/jpeg', 0.7)
       
-      await addDoc(collection(db, 'drawings'), {
-        title: saveTitle || 'Mon dessin',
-        imageData: compressed,
-        isPublic: savePublic,
-        authorId: auth.currentUser.uid,
-        authorName: auth.currentUser.displayName || 'Artiste',
-        createdAt: serverTimestamp(),
-        votes: { green: 0, blue: 0, red: 0, x: 0 },
-        votedUsers: {}
+      const res = await fetch('/api/drawings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: saveTitle || 'Mon dessin', imageData: compressed, isPublic: savePublic })
       })
+      const data = await res.json()
+      if (!res.ok) { setSaveError(data.error || 'Erreur'); return }
       
       setShowSaveModal(false)
       router.push('/classement')
     } catch {
-      setSaveError('Erreur lors de la sauvegarde')
+      setSaveError('Erreur de connexion')
     } finally {
       setSaveLoading(false)
     }
@@ -1097,7 +1074,7 @@ export default function EtchASketch() {
               
               <input
                 type="email"
-                placeholder="Email"
+                placeholder="Ton identifiant unique (ex: aaron@sketch)"
                 value={authForm.email}
                 onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
                 className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
@@ -1107,22 +1084,13 @@ export default function EtchASketch() {
               {authMode === 'register' && (
                 <input
                   type="text"
-                  placeholder="Nom"
+                  placeholder="Ton nom d'artiste"
                   value={authForm.name}
                   onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
                   className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
                   required
                 />
               )}
-              
-              <input
-                type="password"
-                placeholder="Mot de passe"
-                value={authForm.password}
-                onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
-                required
-              />
               
               <button
                 type="submit"

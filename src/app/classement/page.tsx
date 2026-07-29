@@ -2,25 +2,20 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { auth, db } from '@/lib/firebase'
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth'
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, getDocs, where } from 'firebase/firestore'
 
 interface Drawing {
   id: string
   title: string
   imageData: string
   isPublic: boolean
-  authorName: string
-  authorId: string
-  createdAt: any
+  createdAt: string
+  author: { id: string; name: string }
   votes: { green: number; blue: number; red: number; x: number }
-  votedUsers: Record<string, string>
   score: number
   userVote: string | null
 }
 
-interface CurrentUser {
+interface User {
   id: string
   name: string
   email: string
@@ -29,7 +24,7 @@ interface CurrentUser {
 export default function ClassementPage() {
   const router = useRouter()
   const [drawings, setDrawings] = useState<Drawing[]>([])
-  const [user, setUser] = useState<CurrentUser | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -37,130 +32,78 @@ export default function ClassementPage() {
   const [authError, setAuthError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
 
-  // Firebase auth listener
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Artiste',
-          email: firebaseUser.email || ''
-        })
-      } else {
-        setUser(null)
-      }
-    })
-    return () => unsub()
+  const fetchUser = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me')
+      const data = await res.json()
+      setUser(data.user)
+    } catch { setUser(null) }
   }, [])
 
-  // Real-time drawings listener
-  useEffect(() => {
-    const q = query(collection(db, 'drawings'), orderBy('createdAt', 'desc'))
-    const unsub = onSnapshot(q, (snapshot) => {
-      const items: Drawing[] = []
-      snapshot.forEach(d => {
-        const data = d.data()
-        const votes = data.votes || { green: 0, blue: 0, red: 0, x: 0 }
-        const score = (votes.green * 2) + votes.blue - votes.red - (votes.x * 2)
-        const votedUsers = data.votedUsers || {}
-        items.push({
-          id: d.id,
-          title: data.title,
-          imageData: data.imageData,
-          isPublic: data.isPublic,
-          authorName: data.authorName || 'Anonyme',
-          authorId: data.authorId,
-          createdAt: data.createdAt,
-          votes,
-          votedUsers,
-          score,
-          userVote: user ? (votedUsers[user.id] || null) : null
-        })
-      })
-      setDrawings(items.sort((a, b) => b.score - a.score))
-      setLoading(false)
-    }, () => setLoading(false))
-    return () => unsub()
-  }, [user])
-
-  // Vote for a drawing
-  const handleVote = async (drawingId: string, type: string) => {
-    if (!user || !auth.currentUser) {
-      setShowAuthModal(true)
-      return
-    }
-
+  const fetchDrawings = useCallback(async () => {
     try {
-      const drawing = drawings.find(d => d.id === drawingId)
-      if (!drawing) return
-
-      const currentVote = drawing.votedUsers[user.id]
-      const votes = { ...drawing.votes }
-
-      // Remove old vote if exists
-      if (currentVote && currentVote in votes) {
-        votes[currentVote as keyof typeof votes]--
-      }
-
-      // If same vote type, just remove it (toggle off)
-      if (currentVote === type) {
-        const newVotedUsers = { ...drawing.votedUsers }
-        delete newVotedUsers[user.id]
-        await updateDoc(doc(db, 'drawings', drawingId), {
-          votes,
-          votedUsers: newVotedUsers
-        })
-      } else {
-        // Add new vote
-        votes[type as keyof typeof votes]++
-        await updateDoc(doc(db, 'drawings', drawingId), {
-          votes,
-          votedUsers: { ...drawing.votedUsers, [user.id]: type }
-        })
-      }
+      const res = await fetch('/api/drawings')
+      const data = await res.json()
+      setDrawings(data.drawings || [])
     } catch (error) {
-      console.error('Vote error:', error)
+      console.error('Error:', error)
+    } finally {
+      setLoading(false)
     }
+  }, [])
+
+  useEffect(() => { fetchUser(); fetchDrawings() }, [fetchUser, fetchDrawings])
+
+  const handleVote = async (drawingId: string, type: string) => {
+    if (!user) { setShowAuthModal(true); return }
+    try {
+      await fetch('/api/votes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drawingId, type })
+      })
+      fetchDrawings()
+    } catch (error) { console.error('Vote error:', error) }
   }
 
-  // Auth
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError('')
     setAuthLoading(true)
     try {
       if (authMode === 'login') {
-        const cred = await signInWithEmailAndPassword(auth, authForm.email, authForm.password)
-        setUser({ id: cred.user.uid, name: cred.user.displayName || 'Artiste', email: cred.user.email || '' })
+        const res = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authForm.email })
+        })
+        const data = await res.json()
+        if (!res.ok) { setAuthError(data.error || 'Non trouvé'); return }
+        setUser(data)
       } else {
-        const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password)
-        await updateProfile(cred.user, { displayName: authForm.name })
-        setUser({ id: cred.user.uid, name: authForm.name, email: authForm.email })
+        const res = await fetch('/api/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authForm.email, name: authForm.name })
+        })
+        const data = await res.json()
+        if (!res.ok) { setAuthError(data.error || 'Erreur'); return }
+        setUser(data)
       }
       setShowAuthModal(false)
       setAuthForm({ email: '', name: '', password: '' })
-    } catch (err: any) {
-      const msg = err?.code === 'auth/email-already-in-use' ? 'Cet email est déjà utilisé'
-        : err?.code === 'auth/invalid-credential' ? 'Email ou mot de passe incorrect'
-        : err?.code === 'auth/weak-password' ? 'Mot de passe trop faible (6 min.)'
-        : 'Erreur'
-      setAuthError(msg)
-    } finally {
-      setAuthLoading(false)
-    }
+    } catch { setAuthError('Erreur de connexion') }
+    finally { setAuthLoading(false) }
   }
 
   const handleLogout = async () => {
-    await signOut(auth)
+    await fetch('/api/auth/logout', { method: 'POST' })
     setUser(null)
   }
 
   const getVoteButtonStyle = (type: string, isActive: boolean) => {
     const base = {
-      green: { bg: isActive ? '#22c55e' : '#166534', icon: '💚', label: 'Super!' },
-      blue: { bg: isActive ? '#3b82f6' : '#1e40af', icon: '🩵', label: 'Bien' },
-      red: { bg: isActive ? '#ef4444' : '#991b1b', icon: '❤️', label: 'Pas mal' },
-      x: { bg: isActive ? '#6b7280' : '#374151', icon: '❌', label: 'Non' }
+      green: { bg: isActive ? '#22c55e' : '#166534', icon: '💚' },
+      blue:  { bg: isActive ? '#3b82f6' : '#1e40af', icon: '🩵' },
+      red:   { bg: isActive ? '#ef4444' : '#991b1b', icon: '❤️' },
+      x:     { bg: isActive ? '#6b7280' : '#374151', icon: '❌' }
     }
     return base[type as keyof typeof base] || base.x
   }
@@ -177,33 +120,21 @@ export default function ClassementPage() {
     <div className="fixed inset-0 bg-gradient-to-br from-red-900 to-red-700 overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex-shrink-0 h-[10vh] bg-black/20 flex items-center justify-between px-[2vw]">
-        <button
-          onClick={() => router.push('/')}
-          className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-        >
-          ←
-        </button>
-        <h1 className="text-[#d4af37] text-[3vh] font-bold tracking-wider" style={{ fontFamily: 'Georgia, serif' }}>
-          Classement
-        </h1>
+        <button onClick={() => router.push('/')} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors">←</button>
+        <h1 className="text-[#d4af37] text-[3vh] font-bold tracking-wider" style={{ fontFamily: 'Georgia, serif' }}>Classement</h1>
         {user ? (
           <div className="flex items-center gap-2">
             <span className="text-white text-[1.5vh]">{user.name}</span>
             <button onClick={handleLogout} className="text-white/60 text-[1.2vh] hover:text-white">Déco</button>
           </div>
         ) : (
-          <button
-            onClick={() => setShowAuthModal(true)}
-            className="px-3 py-1 bg-[#d4af37] text-black text-[1.5vh] font-bold rounded-full"
-          >
-            Connexion
-          </button>
+          <button onClick={() => setShowAuthModal(true)} className="px-3 py-1 bg-[#d4af37] text-black text-[1.5vh] font-bold rounded-full">Connexion</button>
         )}
       </div>
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-[2vw]">
-        {drawings.filter(d => d.isPublic).length === 0 ? (
+        {drawings.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center text-white/80">
               <div className="text-[4vh] mb-4">🎨</div>
@@ -213,7 +144,7 @@ export default function ClassementPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-[2vw]">
-            {drawings.filter(d => d.isPublic).map((drawing, index) => (
+            {drawings.map((drawing, index) => (
               <div key={drawing.id} className="bg-black/30 rounded-xl overflow-hidden flex" style={{ height: '30vh' }}>
                 <div className="w-[50%] p-2">
                   <div className="w-full h-full rounded-lg overflow-hidden bg-[#c4c4c4] relative">
@@ -222,15 +153,13 @@ export default function ClassementPage() {
                       <div
                         className="absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-white text-[1.2vh] font-bold"
                         style={{ background: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : '#cd7f32', color: index === 0 ? '#000' : '#fff' }}
-                      >
-                        {index + 1}
-                      </div>
+                      >{index + 1}</div>
                     )}
                   </div>
                 </div>
                 <div className="w-[50%] p-2 flex flex-col">
                   <div className="text-white text-[1.5vh] font-bold truncate">{drawing.title}</div>
-                  <div className="text-white/60 text-[1.2vh]">par {drawing.authorName}</div>
+                  <div className="text-white/60 text-[1.2vh]">par {drawing.author.name}</div>
                   <div className="text-[#d4af37] text-[2vh] font-bold mt-1">Score: {drawing.score}</div>
                   <div className="flex-1 flex items-center">
                     <div className="grid grid-cols-4 gap-1 w-full">
@@ -267,16 +196,15 @@ export default function ClassementPage() {
             </div>
             <form onSubmit={handleAuthSubmit} className="p-4 space-y-3">
               {authError && <div className="text-red-400 text-sm text-center">{authError}</div>}
-              <input type="email" placeholder="Email" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]" required />
+              <input type="email" placeholder="Ton identifiant unique (ex: aaron@sketch)" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]" required />
               {authMode === 'register' && (
-                <input type="text" placeholder="Nom" value={authForm.name} onChange={e => setAuthForm({ ...authForm, name: e.target.value })} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]" required />
+                <input type="text" placeholder="Ton nom d'artiste" value={authForm.name} onChange={e => setAuthForm({ ...authForm, name: e.target.value })} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]" required />
               )}
-              <input type="password" placeholder="Mot de passe" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]" required />
               <button type="submit" disabled={authLoading} className="w-full py-2 bg-[#d4af37] text-black font-bold rounded-lg hover:bg-[#e5c048] transition-colors disabled:opacity-50">
-                {authLoading ? 'Chargement...' : (authMode === 'login' ? 'Se connecter' : "S'inscrire")}
+                {authLoading ? 'Chargement...' : (authMode === 'login' ? 'Entrer' : "S'inscrire")}
               </button>
               <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError('') }} className="w-full text-white/60 text-sm hover:text-white">
-                {authMode === 'login' ? "Pas de compte? S'inscrire" : 'Déjà un compte? Se connecter'}
+                {authMode === 'login' ? 'Pas de compte? S\'inscrire' : 'Déjà inscrit? Se connecter'}
               </button>
             </form>
           </div>
