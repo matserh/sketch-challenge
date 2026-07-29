@@ -2,6 +2,9 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { auth, db } from '@/lib/firebase'
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth'
+import { collection, addDoc, getDocs, query, orderBy, where, doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 
 type ColorMode = 'normal' | 'gradient'
 type GameMode = 'draw' | 'eraser'
@@ -101,18 +104,20 @@ export default function EtchASketch() {
   const canvasInitialized = useRef(false)
   const lastCanvasSize = useRef({ width: 0, height: 0 })
   
-  // Fetch user on mount
+  // Firebase auth listener
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch('/api/auth/me')
-        const data = await res.json()
-        setUser(data.user)
-      } catch {
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Artiste',
+          email: firebaseUser.email || ''
+        })
+      } else {
         setUser(null)
       }
-    }
-    fetchUser()
+    })
+    return () => unsub()
   }, [])
   
   // Orientation
@@ -595,44 +600,50 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
   
-  // Auth submit
+  // Auth submit (Firebase)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError('')
     setAuthLoading(true)
     
     try {
-      const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register'
-      const body = authMode === 'login' 
-        ? { email: authForm.email, password: authForm.password }
-        : authForm
-      
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      
-      const data = await res.json()
-      
-      if (!res.ok) {
-        setAuthError(data.error || 'Erreur')
-        return
+      if (authMode === 'login') {
+        const cred = await signInWithEmailAndPassword(auth, authForm.email, authForm.password)
+        setUser({
+          id: cred.user.uid,
+          name: cred.user.displayName || 'Artiste',
+          email: cred.user.email || ''
+        })
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password)
+        await updateProfile(cred.user, { displayName: authForm.name })
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          name: authForm.name,
+          email: authForm.email,
+          createdAt: serverTimestamp()
+        })
+        setUser({
+          id: cred.user.uid,
+          name: authForm.name,
+          email: authForm.email
+        })
       }
-      
-      setUser(data)
       setShowAuthModal(false)
       setAuthForm({ email: '', name: '', password: '' })
-    } catch {
-      setAuthError('Erreur de connexion')
+    } catch (err: any) {
+      const msg = err?.code === 'auth/email-already-in-use' ? 'Cet email est déjà utilisé'
+        : err?.code === 'auth/invalid-credential' ? 'Email ou mot de passe incorrect'
+        : err?.code === 'auth/weak-password' ? 'Mot de passe trop faible (6 min.)'
+        : 'Erreur lors de l\'authentification'
+      setAuthError(msg)
     } finally {
       setAuthLoading(false)
     }
   }
   
-  // Logout
+  // Logout (Firebase)
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
+    await signOut(auth)
     setUser(null)
     setShowMenu(false)
   }
@@ -650,17 +661,16 @@ export default function EtchASketch() {
     setShowMenu(false)
   }
   
-  // Save drawing
+  // Save drawing (Firebase)
   const handleSaveDrawing = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const canvas = canvasRef.current
-    if (!canvas) {
+    if (!canvas || !auth.currentUser) {
       setSaveError('Erreur: canvas non trouvé')
       return
     }
     
-    // Get the actual image data from canvas
     const imageData = canvas.toDataURL('image/png')
     
     if (!imageData || imageData === 'data:,') {
@@ -672,28 +682,35 @@ export default function EtchASketch() {
     setSaveError('')
     
     try {
-      const res = await fetch('/api/drawings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: saveTitle || 'Mon dessin',
-          imageData,
-          isPublic: savePublic
-        })
+      // Compress image by drawing to a smaller canvas
+      const img = new Image()
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve()
+        img.src = imageData
+      })
+      const maxW = 800
+      const scale = Math.min(1, maxW / img.width)
+      const offscreen = document.createElement('canvas')
+      offscreen.width = img.width * scale
+      offscreen.height = img.height * scale
+      offscreen.getContext('2d')!.drawImage(img, 0, 0, offscreen.width, offscreen.height)
+      const compressed = offscreen.toDataURL('image/jpeg', 0.7)
+      
+      await addDoc(collection(db, 'drawings'), {
+        title: saveTitle || 'Mon dessin',
+        imageData: compressed,
+        isPublic: savePublic,
+        authorId: auth.currentUser.uid,
+        authorName: auth.currentUser.displayName || 'Artiste',
+        createdAt: serverTimestamp(),
+        votes: { green: 0, blue: 0, red: 0, x: 0 },
+        votedUsers: {}
       })
       
-      const data = await res.json()
-      
-      if (!res.ok) {
-        setSaveError(data.error || 'Erreur lors de la sauvegarde')
-        return
-      }
-      
       setShowSaveModal(false)
-      // Show success message or navigate to classement
       router.push('/classement')
     } catch {
-      setSaveError('Erreur de connexion')
+      setSaveError('Erreur lors de la sauvegarde')
     } finally {
       setSaveLoading(false)
     }

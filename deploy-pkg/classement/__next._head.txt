@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[97367,["/_next/static/chunks/2f236954d6a65e12.js"],"ViewportBoundary"]
+3:I[97367,["/_next/static/chunks/2f236954d6a65e12.js"],"MetadataBoundary"]
+4:"$Sreact.suspense"
+5:I[27201,["/_next/static/chunks/2f236954d6a65e12.js"],"IconMark"]
+0:{"buildId":"r6mbBG-tGDvsjTi2_YB6f","rsc":["$","$1","h",{"children":[null,["$","$L2",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"}]]}],["$","div",null,{"hidden":true,"children":["$","$L3",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Sketch Challenge | Aaron"}],["$","meta","1",{"name":"description","content":"Un jeu de dessin Etch-A-Sketch interactif pour mobile avec détection de mouvement."}],["$","meta","2",{"name":"author","content":"Aaron"}],["$","link","3",{"rel":"manifest","href":"/manifest.json"}],["$","meta","4",{"name":"keywords","content":"Etch-A-Sketch,jeu,dessin,mobile,shake,Aaron"}],["$","link","5",{"rel":"icon","href":"/logo.svg"}],["$","$L5","6",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"loading":null,"isPartial":false}
