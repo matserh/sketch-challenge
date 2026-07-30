@@ -91,6 +91,7 @@ export default function EtchASketch() {
   // Color toggle
   const colorShakeCount = useRef(0)
   const lastColorShakeTime = useRef(0)
+  const singleShakeTimer = useRef<NodeJS.Timeout | null>(null)
   
   // Gradient
   const gradientHue = useRef(Math.random() * 360)
@@ -304,59 +305,89 @@ export default function EtchASketch() {
     // If in eraser mode, single shake exits eraser mode
     if (gameModeRef.current === 'eraser') {
       exitEraserMode()
+      lastShakeTime.current = 0
+      colorShakeCount.current = 0
+      shakeCount.current = 0
+      if (singleShakeTimer.current) {
+        clearTimeout(singleShakeTimer.current)
+        singleShakeTimer.current = null
+      }
       return
     }
     
-    // Detect fast continuous shaking for full erase
     const timeSinceLastShake = now - lastShakeTime.current
-    if (timeSinceLastShake < 300) {
-      // Fast continuous shaking - count for full erase
+    
+    // Fast continuous shaking (<300ms gap) → full erase
+    if (timeSinceLastShake < 300 && lastShakeTime.current > 0) {
       shakeCount.current++
-    } else if (timeSinceLastShake >= 300 && timeSinceLastShake <= 800) {
-      // Two shakes with short pause - toggle eraser mode
+      lastShakeTime.current = now
+      
+      setShowDustBar(true)
+      const progress = Math.min(100, shakeCount.current * 10)
+      setDustProgress(progress)
+      
+      // Cancel any pending single-shake color toggle
+      colorShakeCount.current = 0
+      if (singleShakeTimer.current) {
+        clearTimeout(singleShakeTimer.current)
+        singleShakeTimer.current = null
+      }
+      
+      if (progress >= 100) {
+        eraseScreen()
+        shakeCount.current = 0
+        return
+      }
+      
+      if (shakeDecayTimer.current) clearTimeout(shakeDecayTimer.current)
+      shakeDecayTimer.current = setTimeout(() => {
+        const decay = setInterval(() => {
+          shakeCount.current = Math.max(0, shakeCount.current - 1)
+          const p = shakeCount.current * 10
+          setDustProgress(p)
+          if (shakeCount.current <= 0) {
+            clearInterval(decay)
+            setShowDustBar(false)
+          }
+        }, 50)
+      }, 300)
+      return
+    }
+    
+    // 2-shake detection (300-800ms gap) → toggle eraser
+    if (timeSinceLastShake >= 300 && timeSinceLastShake <= 800) {
       colorShakeCount.current++
+      lastShakeTime.current = now
+      
       if (colorShakeCount.current >= 2) {
         toggleEraserMode()
         colorShakeCount.current = 0
-        lastColorShakeTime.current = 0
+        lastShakeTime.current = 0
+        if (singleShakeTimer.current) {
+          clearTimeout(singleShakeTimer.current)
+          singleShakeTimer.current = null
+        }
         return
       }
     } else {
-      // Too long pause - reset
-      shakeCount.current = 1
+      // First shake or after long pause
       colorShakeCount.current = 1
+      shakeCount.current = 0
+      lastShakeTime.current = now
     }
     
-    lastShakeTime.current = now
-    lastColorShakeTime.current = now
-    
-    // Show progress bar for full erase
-    setShowDustBar(true)
-    const progress = Math.min(100, shakeCount.current * 10)
-    setDustProgress(progress)
-    
-    // Full erase when progress reaches 100%
-    if (progress >= 100) {
-      eraseScreen()
+    // Single shake timer: if no follow-up shake within 900ms → toggle color mode
+    if (singleShakeTimer.current) clearTimeout(singleShakeTimer.current)
+    singleShakeTimer.current = setTimeout(() => {
+      // Only toggle color if this was an isolated single shake
+      if (colorShakeCount.current === 1 && shakeCount.current === 0 && gameModeRef.current === 'draw') {
+        toggleColorMode()
+      }
       colorShakeCount.current = 0
-      return
-    }
-    
-    // Decay timer - progress goes down if not shaking
-    if (shakeDecayTimer.current) clearTimeout(shakeDecayTimer.current)
-    shakeDecayTimer.current = setTimeout(() => {
-      const decay = setInterval(() => {
-        shakeCount.current = Math.max(0, shakeCount.current - 1)
-        colorShakeCount.current = 0
-        const p = shakeCount.current * 10
-        setDustProgress(p)
-        if (shakeCount.current <= 0) {
-          clearInterval(decay)
-          setShowDustBar(false)
-        }
-      }, 50)
-    }, 300)
-  }, [isErasing, eraseScreen, exitEraserMode, toggleEraserMode])
+      lastShakeTime.current = 0
+      singleShakeTimer.current = null
+    }, 900)
+  }, [isErasing, eraseScreen, exitEraserMode, toggleEraserMode, toggleColorMode])
   
   // Game loop
   useEffect(() => {
@@ -868,6 +899,40 @@ export default function EtchASketch() {
                 </div>
                 <div className="text-white/50 text-[10px]">
                   {gameMode === 'eraser' ? 'Retour au dessin' : 'Effacer une partie'}
+                </div>
+              </div>
+            </button>
+            
+            {/* Color mode toggle */}
+            <button
+              onClick={() => {
+                toggleColorMode()
+                setShowMenu(false)
+              }}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+            >
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ 
+                  background: colorMode === 'gradient' 
+                    ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)' 
+                    : 'linear-gradient(135deg, #1a1a1a, #3a3a3a)'
+                }}
+              >
+                <div 
+                  className="w-3 h-3 rounded-full"
+                  style={{ 
+                    background: colorMode === 'gradient' ? 'rgba(255,255,255,0.7)' : '#000',
+                    border: colorMode === 'gradient' ? 'none' : '1px solid #555'
+                  }}
+                />
+              </div>
+              <div className="text-left">
+                <div className="text-white text-sm font-bold">
+                  {colorMode === 'gradient' ? 'Couleur Dégradé' : 'Pinceau Noir'}
+                </div>
+                <div className="text-white/50 text-[10px]">
+                  {colorMode === 'gradient' ? 'Passer au noir' : 'Passer en dégradé'}
                 </div>
               </div>
             </button>
