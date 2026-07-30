@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sketch Challenge | Aaron",
+  title: "Sketch Challenge | Aeron",
   description: "Un jeu de dessin Etch-A-Sketch interactif pour mobile avec détection de mouvement.",
-  keywords: ["Etch-A-Sketch", "jeu", "dessin", "mobile", "shake", "Aaron"],
-  authors: [{ name: "Aaron" }],
+  keywords: ["Etch-A-Sketch", "jeu", "dessin", "mobile", "shake", "Aeron"],
+  authors: [{ name: "Aeron" }],
   icons: {
     icon: "/logo.svg",
   },

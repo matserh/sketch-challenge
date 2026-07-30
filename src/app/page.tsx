@@ -1037,7 +1037,7 @@ export default function EtchASketch() {
             Sketch Challenge
           </div>
           <div className="absolute -bottom-[2.5vh] text-white/50 text-[1.5vh] tracking-widest uppercase">
-            Designed by <span className="text-[#d4af37]">Aaron</span>
+            Designed by <span className="text-[#d4af37]">Aeron</span>
           </div>
         </div>
         

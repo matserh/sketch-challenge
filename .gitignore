@@ -52,3 +52,12 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Database
+prisma/*.db
+prisma/*.db-journal
+*.sqlite
+*.db
+
+# PM2 / logs
+logs/
+*.log
