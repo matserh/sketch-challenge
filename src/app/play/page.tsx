@@ -102,6 +102,45 @@ export default function EtchASketch() {
   const canvasInitialized = useRef(false)
   const lastCanvasSize = useRef({ width: 0, height: 0 })
   
+  // Persistence refs
+  const saveTimer = useRef<NodeJS.Timeout | null>(null)
+  const hasLoadedFromStorage = useRef(false)
+  
+  // Save canvas to localStorage (debounced)
+  const saveCanvasToLocal = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      const canvas = canvasRef.current
+      if (!canvas || canvas.width === 0 || canvas.height === 0) return
+      try {
+        // Compress to JPEG to save space (localStorage ~5MB limit)
+        const data = canvas.toDataURL('image/jpeg', 0.7)
+        try {
+          localStorage.setItem('sketch-canvas', data)
+          localStorage.setItem('sketch-canvas-time', Date.now().toString())
+          // Also save canvas dimensions for proper restore
+          localStorage.setItem('sketch-canvas-w', canvas.width.toString())
+          localStorage.setItem('sketch-canvas-h', canvas.height.toString())
+        } catch (storageErr) {
+          // Quota exceeded — try smaller size or skip
+          console.warn('localStorage quota exceeded, skipping save')
+        }
+      } catch (e) {
+        console.warn('Could not serialize canvas:', e)
+      }
+    }, 500)
+  }, [])
+  
+  // Clear saved canvas (after full erase)
+  const clearSavedCanvas = useCallback(() => {
+    try {
+      localStorage.removeItem('sketch-canvas')
+      localStorage.removeItem('sketch-canvas-time')
+      localStorage.removeItem('sketch-canvas-w')
+      localStorage.removeItem('sketch-canvas-h')
+    } catch {}
+  }, [])
+  
   // Fetch user on mount
   useEffect(() => {
     const fetchUser = async () => {
@@ -184,13 +223,29 @@ export default function EtchASketch() {
         ctx.lineCap = 'square'
         ctx.lineWidth = 3.5
         
-        // Restore drawing if we had one
+        // Restore drawing if we had one (in-memory, from resize)
         if (imageData) {
           const img = new Image()
           img.onload = () => {
-            ctx.drawImage(img, 0, 0)
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
           }
           img.src = imageData
+        } else if (!hasLoadedFromStorage.current) {
+          // First init — try to load from localStorage
+          hasLoadedFromStorage.current = true
+          try {
+            const saved = localStorage.getItem('sketch-canvas')
+            const savedW = parseInt(localStorage.getItem('sketch-canvas-w') || '0', 10)
+            const savedH = parseInt(localStorage.getItem('sketch-canvas-h') || '0', 10)
+            if (saved && savedW > 0 && savedH > 0) {
+              const img = new Image()
+              img.onload = () => {
+                // Scale saved image to current canvas size
+                ctx.drawImage(img, 0, 0, savedW, savedH, 0, 0, canvas.width, canvas.height)
+              }
+              img.src = saved
+            }
+          } catch {}
         }
       }
     }
@@ -245,9 +300,11 @@ export default function EtchASketch() {
         lastPenX.current = penX.current
         lastPenY.current = penY.current
         updatePointer()
+        // Clear saved drawing — it's been erased
+        clearSavedCanvas()
       }
     }, 50)
-  }, [isErasing, updatePointer])
+  }, [isErasing, updatePointer, clearSavedCanvas])
   
   // Erase part
   const erasePart = useCallback((x: number, y: number) => {
@@ -261,7 +318,10 @@ export default function EtchASketch() {
     ctx.fillStyle = '#c4c4c4'
     ctx.fill()
     ctx.restore()
-  }, [])
+    
+    // Save eraser modifications too (debounced)
+    saveCanvasToLocal()
+  }, [saveCanvasToLocal])
   
   // Toggle color mode
   const toggleColorMode = useCallback(() => {
@@ -452,6 +512,9 @@ export default function EtchASketch() {
         
         lastPenX.current = penX.current
         lastPenY.current = penY.current
+        
+        // Save to localStorage (debounced) — only when actually drawing
+        saveCanvasToLocal()
       }
       
       if (moved) {
@@ -469,7 +532,7 @@ export default function EtchASketch() {
     }
     
     return () => cancelAnimationFrame(rafRef.current)
-  }, [isStarted, initCanvas, updatePointer, getStrokeColor, erasePart])
+  }, [isStarted, initCanvas, updatePointer, getStrokeColor, erasePart, saveCanvasToLocal])
   
   // Joystick handlers
   const createJoystickHandlers = useCallback((type: 'move' | 'draw') => {
@@ -624,6 +687,44 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
   
+  // Persist canvas before user leaves (page hide, switch tab, navigate away)
+  useEffect(() => {
+    if (!isStarted) return
+    
+    const flushSave = () => {
+      // Cancel pending debounced save and save immediately
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      const canvas = canvasRef.current
+      if (!canvas || canvas.width === 0 || canvas.height === 0) return
+      try {
+        const data = canvas.toDataURL('image/jpeg', 0.7)
+        localStorage.setItem('sketch-canvas', data)
+        localStorage.setItem('sketch-canvas-time', Date.now().toString())
+        localStorage.setItem('sketch-canvas-w', canvas.width.toString())
+        localStorage.setItem('sketch-canvas-h', canvas.height.toString())
+      } catch {}
+    }
+    
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') flushSave()
+    }
+    
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pagehide', flushSave)
+    window.addEventListener('beforeunload', flushSave)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('pagehide', flushSave)
+      window.removeEventListener('beforeunload', flushSave)
+      // Final save on unmount too
+      flushSave()
+    }
+  }, [isStarted])
+  
   // Auth submit (simple - no password)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -760,7 +861,7 @@ export default function EtchASketch() {
       >
         {/* Top bar */}
         {isStarted && (
-          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-[1000] flex justify-between items-center">
+          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-[1002] flex justify-between items-center">
             {gameMode === 'draw' && (
               <div 
                 className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
