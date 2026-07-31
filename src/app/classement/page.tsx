@@ -120,7 +120,7 @@ export default function ClassementPage() {
     <div className="fixed inset-0 bg-gradient-to-br from-red-900 to-red-700 overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex-shrink-0 h-[10vh] bg-black/20 flex items-center justify-between px-[2vw]">
-        <button onClick={() => router.push('/')} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors">←</button>
+        <button onClick={() => router.back()} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors">←</button>
         <h1 className="text-[#d4af37] text-[3vh] font-bold tracking-wider" style={{ fontFamily: 'Georgia, serif' }}>Classement</h1>
         {user ? (
           <div className="flex items-center gap-2">

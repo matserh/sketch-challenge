@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#C8102E"/>
+  <rect x="14" y="14" width="36" height="26" rx="3" fill="#c4c4c4" stroke="#000" stroke-width="2"/>
+  <!-- Crayon stylisé -->
+  <g transform="translate(20, 18) rotate(35 12 12)">
+    <rect x="9" y="2" width="6" height="16" fill="#fff" stroke="#000" stroke-width="1.2"/>
+    <polygon points="9,18 12,22 15,18" fill="#000"/>
+    <rect x="9" y="2" width="6" height="3" fill="#C8102E" stroke="#000" stroke-width="1.2"/>
+  </g>
+  <!-- Boutons Etch-A-Sketch -->
+  <circle cx="18" cy="50" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <circle cx="46" cy="50" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+</svg>

@@ -760,7 +760,7 @@ export default function EtchASketch() {
       >
         {/* Top bar */}
         {isStarted && (
-          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-20 flex justify-between items-center">
+          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-[1000] flex justify-between items-center">
             {gameMode === 'draw' && (
               <div 
                 className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
@@ -819,7 +819,7 @@ export default function EtchASketch() {
         {/* Dropdown menu */}
         {isStarted && showMenu && (
           <div 
-            className="absolute top-[6vh] right-[2vw] z-30 rounded-xl overflow-hidden menu-slide"
+            className="absolute top-[6vh] right-[2vw] z-[1001] rounded-xl overflow-hidden menu-slide"
             style={{
               background: 'linear-gradient(145deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98))',
               boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
