@@ -3,24 +3,66 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
+type DeviceCheck = {
+  checked: boolean
+  allowed: boolean
+  reason: string
+}
+
+function detectDevice(): DeviceCheck {
+  if (typeof window === 'undefined') {
+    return { checked: false, allowed: true, reason: '' }
+  }
+
+  const ua = navigator.userAgent || ''
+  const maxTouch = navigator.maxTouchPoints || 0
+  const hasTouch = 'ontouchstart' in window || maxTouch > 0
+
+  // Mobile / tablet User Agent patterns
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|BlackBerry|Opera Mini|IEMobile|Tablet|Windows Phone/i.test(ua)
+
+  // iPad in desktop mode (iPadOS 13+) reports as Macintosh but still has touch
+  const isIpadDesktopMode = /Macintosh|MacIntel/i.test(ua) && hasTouch && maxTouch >= 1
+
+  // Chromebook detection (Chrome OS, often reports as X11/Linux with Chrome)
+  const isChromebook = /CrOS/i.test(ua)
+
+  // Surface / Windows touchscreen laptop detection (Windows + touch but desktop UA)
+  const isWindowsDesktopWithTouch = /Windows NT/i.test(ua) && !/Windows Phone/i.test(ua) && hasTouch
+
+  // Screen too large = likely desktop/laptop, even if touch exists
+  // Tablets: max ~1366x1024 (iPad Pro 12.9"), phones: max ~430x932
+  // Laptops: typically 1280x800+ in small dimension, often 1366x768, 1440x900, etc.
+  const w = window.innerWidth
+  const h = window.innerHeight
+  const minDim = Math.min(w, h)
+  const maxDim = Math.max(w, h)
+  // Reject if smallest dimension is too large (laptop-like) — except for iPad Pro which is borderline
+  // Allow tablets up to 1100px in smallest dimension
+  const screenTooLarge = minDim > 1100
+
+  // Determine reason
+  let reason = ''
+  if (isChromebook) reason = 'Chromebook détecté'
+  else if (isWindowsDesktopWithTouch && !mobileUA) reason = 'PC Windows avec écran tactile'
+  else if (!hasTouch) reason = 'Pas de tactile détecté'
+  else if (screenTooLarge) reason = `Écran trop grand (${w}×${h})`
+  else if (!mobileUA && !isIpadDesktopMode) reason = 'User Agent non mobile'
+
+  const allowed = hasTouch && (mobileUA || isIpadDesktopMode) && !screenTooLarge && !isChromebook && !(isWindowsDesktopWithTouch && !mobileUA)
+
+  return { checked: true, allowed, reason }
+}
+
 export default function LandingPage() {
-  const [isMobile, setIsMobile] = useState(true)
+  const [device, setDevice] = useState<DeviceCheck>({ checked: false, allowed: true, reason: '' })
 
   useEffect(() => {
-    const check = () => {
-      const ua = navigator.userAgent || ''
-      const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
-      const small = window.innerWidth <= 1024
-      const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)
-      // Considered mobile if touch device AND small screen, OR mobile UA
-      setIsMobile((touch && small) || mobileUA)
-    }
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
+    // Check ONCE on mount — no resize listener, so it can't be bypassed by resizing
+    setDevice(detectDevice())
   }, [])
 
-  if (!isMobile) {
+  if (device.checked && !device.allowed) {
     return (
       <div
         style={{
@@ -58,16 +100,32 @@ export default function LandingPage() {
         <p
           style={{
             fontSize: '16px',
-            maxWidth: '420px',
+            maxWidth: '460px',
             lineHeight: 1.6,
             opacity: 0.95,
           }}
         >
-          Sketch Challenge n&apos;est disponible que sur mobile.
+          Sketch Challenge n&apos;est disponible que sur{' '}
+          <strong>mobile et tablette</strong>.
           <br />
-          Ouvre cette page sur ton téléphone, en mode paysage, pour pouvoir
-          dessiner avec les deux joysticks.
+          Ouvre cette page sur ton téléphone ou ta tablette, en mode paysage,
+          pour pouvoir dessiner avec les deux joysticks.
         </p>
+        {device.reason && (
+          <div
+            style={{
+              marginTop: '20px',
+              padding: '8px 14px',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(255,255,255,0.3)',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+              opacity: 0.85,
+            }}
+          >
+            Raison du blocage : {device.reason}
+          </div>
+        )}
         <div
           style={{
             marginTop: '24px',
@@ -82,6 +140,18 @@ export default function LandingPage() {
           Designed by Aeron
         </div>
       </div>
+    )
+  }
+
+  // While checking, show nothing (prevents flash of allowed content on desktop)
+  if (!device.checked) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          background: '#C8102E',
+        }}
+      />
     )
   }
 
