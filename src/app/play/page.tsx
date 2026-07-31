@@ -154,8 +154,20 @@ export default function EtchASketch() {
     // Also check if there's saved canvas data — if so, auto-start
     const hasSavedCanvas = !!localStorage.getItem('sketch-canvas')
     if (wasStarted || hasSavedCanvas) {
-      setIsStarted(true)
-      localStorage.setItem('sketch-started', 'true')
+      // Request fullscreen + motion permission (same as handleStart)
+      const go = async () => {
+        try {
+          const elem = document.documentElement
+          if (elem.requestFullscreen) await elem.requestFullscreen()
+        } catch {}
+        if (typeof DeviceMotionEvent !== 'undefined' && 
+            typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+          try { await (DeviceMotionEvent as any).requestPermission() } catch {}
+        }
+        setIsStarted(true)
+        localStorage.setItem('sketch-started', 'true')
+      }
+      go()
     }
     setHydrated(true)
   }, [])
@@ -938,7 +950,7 @@ export default function EtchASketch() {
         {/* Dropdown menu */}
         {isStarted && showMenu && (
           <div 
-            className="absolute top-[6vh] right-[2vw] z-[1003] rounded-xl overflow-hidden menu-slide"
+            className="absolute top-[6vh] right-[2vw] z-[1001] rounded-xl overflow-hidden menu-slide"
             style={{
               background: 'linear-gradient(145deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98))',
               boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
