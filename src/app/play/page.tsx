@@ -37,6 +37,7 @@ export default function EtchASketch() {
   // State
   const [isStarted, setIsStarted] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const [isErasing, setIsErasing] = useState(false)
   const [dustProgress, setDustProgress] = useState(0)
   const [showDustBar, setShowDustBar] = useState(false)
@@ -141,6 +142,13 @@ export default function EtchASketch() {
     } catch {}
   }, [])
   
+  // Hydrate: restore isStarted from localStorage BEFORE first paint
+  useEffect(() => {
+    const wasStarted = localStorage.getItem('sketch-started') === 'true'
+    if (wasStarted) setIsStarted(true)
+    setHydrated(true)
+  }, [])
+
   // Fetch user on mount
   useEffect(() => {
     const fetchUser = async () => {
@@ -676,6 +684,7 @@ export default function EtchASketch() {
     }
     
     setIsStarted(true)
+    localStorage.setItem('sketch-started', 'true')
     setTimeout(initCanvas, 100)
   }
   
@@ -895,23 +904,24 @@ export default function EtchASketch() {
             {/* Menu button */}
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="w-10 h-10 rounded-full flex flex-col justify-center items-center gap-1 transition-all duration-300"
+              className="w-11 h-11 rounded-full flex flex-col justify-center items-center gap-[3px] transition-all duration-300"
               style={{ 
                 background: showMenu ? 'rgba(212,175,55,0.9)' : 'rgba(0,0,0,0.4)',
-                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none'
+                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none',
+                overflow: 'visible'
               }}
             >
               <span 
-                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
-                style={{ transform: showMenu ? 'rotate(45deg) translateY(4px)' : 'none' }}
+                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
+                style={{ transform: showMenu ? 'rotate(45deg) translate(3px, 3px)' : 'none' }}
               />
               <span 
-                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
                 style={{ opacity: showMenu ? 0 : 1 }}
               />
               <span 
-                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
-                style={{ transform: showMenu ? 'rotate(-45deg) translateY(-4px)' : 'none' }}
+                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
+                style={{ transform: showMenu ? 'rotate(-45deg) translate(3px, -3px)' : 'none' }}
               />
             </button>
           </div>
@@ -1114,8 +1124,8 @@ export default function EtchASketch() {
               </div>
             )}
             
-            {/* Start button */}
-            {!isStarted && isLandscape && (
+            {/* Start button — only show if never started before (no flash on return) */}
+            {!isStarted && isLandscape && hydrated && (
               <div className="absolute inset-0 z-[10000] flex justify-center items-center pointer-events-none">
                 <button
                   onClick={handleStart}

@@ -1,0 +1,1310 @@
+    38→  const [isStarted, setIsStarted] = useState(false)
+    39→  const [isLandscape, setIsLandscape] = useState(false)
+    40→  const [isErasing, setIsErasing] = useState(false)
+    41→  const [dustProgress, setDustProgress] = useState(0)
+    42→  const [showDustBar, setShowDustBar] = useState(false)
+    43→  const [colorMode, setColorMode] = useState<ColorMode>('gradient')
+    44→  const [gameMode, setGameMode] = useState<GameMode>('draw')
+    45→  const [showMenu, setShowMenu] = useState(false)
+    46→  
+    47→  // Auth state
+    48→  const [user, setUser] = useState<User | null>(null)
+    49→  const [showAuthModal, setShowAuthModal] = useState(false)
+    50→  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+    51→  const [authForm, setAuthForm] = useState({ email: '', name: '', password: '' })
+    52→  const [authError, setAuthError] = useState('')
+    53→  const [authLoading, setAuthLoading] = useState(false)
+    54→  
+    55→  // Save state
+    56→  const [showSaveModal, setShowSaveModal] = useState(false)
+    57→  const [saveTitle, setSaveTitle] = useState('')
+    58→  const [savePublic, setSavePublic] = useState(true)
+    59→  const [saveLoading, setSaveLoading] = useState(false)
+    60→  const [saveError, setSaveError] = useState('')
+    61→  
+    62→  // Pen refs
+    63→  const penX = useRef(0)
+    64→  const penY = useRef(0)
+    65→  const lastPenX = useRef(0)
+    66→  const lastPenY = useRef(0)
+    67→  
+    68→  const vxMove = useRef(0)
+    69→  const vyMove = useRef(0)
+    70→  const vxDraw = useRef(0)
+    71→  const vyDraw = useRef(0)
+    72→  
+    73→  const targetVxMove = useRef(0)
+    74→  const targetVyMove = useRef(0)
+    75→  const targetVxDraw = useRef(0)
+    76→  const targetVyDraw = useRef(0)
+    77→  
+    78→  // Eraser refs
+    79→  const eraserX = useRef(0)
+    80→  const eraserY = useRef(0)
+    81→  const eraserRadius = useRef(25)
+    82→  const lastEraserX = useRef(0)
+    83→  const lastEraserY = useRef(0)
+    84→  
+    85→  // Shake detection
+    86→  const lastAccel = useRef({ x: 0, y: 0, z: 0 })
+    87→  const shakeCount = useRef(0)
+    88→  const lastShakeTime = useRef(0)
+    89→  const shakeDecayTimer = useRef<NodeJS.Timeout | null>(null)
+    90→  
+    91→  // Color toggle
+    92→  const colorShakeCount = useRef(0)
+    93→  const lastColorShakeTime = useRef(0)
+    94→  const singleShakeTimer = useRef<NodeJS.Timeout | null>(null)
+    95→  
+    96→  // Gradient
+    97→  const gradientHue = useRef(Math.random() * 360)
+    98→  const colorModeRef = useRef<ColorMode>('gradient')
+    99→  const gameModeRef = useRef<GameMode>('draw')
+   100→  
+   101→  // Canvas tracking
+   102→  const canvasInitialized = useRef(false)
+   103→  const lastCanvasSize = useRef({ width: 0, height: 0 })
+   104→  
+   105→  // Persistence refs
+   106→  const saveTimer = useRef<NodeJS.Timeout | null>(null)
+   107→  const hasLoadedFromStorage = useRef(false)
+   108→  
+   109→  // Save canvas to localStorage (debounced)
+   110→  const saveCanvasToLocal = useCallback(() => {
+   111→    if (saveTimer.current) clearTimeout(saveTimer.current)
+   112→    saveTimer.current = setTimeout(() => {
+   113→      const canvas = canvasRef.current
+   114→      if (!canvas || canvas.width === 0 || canvas.height === 0) return
+   115→      try {
+   116→        // Compress to JPEG to save space (localStorage ~5MB limit)
+   117→        const data = canvas.toDataURL('image/jpeg', 0.7)
+   118→        try {
+   119→          localStorage.setItem('sketch-canvas', data)
+   120→          localStorage.setItem('sketch-canvas-time', Date.now().toString())
+   121→          // Also save canvas dimensions for proper restore
+   122→          localStorage.setItem('sketch-canvas-w', canvas.width.toString())
+   123→          localStorage.setItem('sketch-canvas-h', canvas.height.toString())
+   124→        } catch (storageErr) {
+   125→          // Quota exceeded — try smaller size or skip
+   126→          console.warn('localStorage quota exceeded, skipping save')
+   127→        }
+   128→      } catch (e) {
+   129→        console.warn('Could not serialize canvas:', e)
+   130→      }
+   131→    }, 500)
+   132→  }, [])
+   133→  
+   134→  // Clear saved canvas (after full erase)
+   135→  const clearSavedCanvas = useCallback(() => {
+   136→    try {
+   137→      localStorage.removeItem('sketch-canvas')
+   138→      localStorage.removeItem('sketch-canvas-time')
+   139→      localStorage.removeItem('sketch-canvas-w')
+   140→      localStorage.removeItem('sketch-canvas-h')
+   141→    } catch {}
+   142→  }, [])
+   143→  
+   144→  // Fetch user on mount
+   145→  useEffect(() => {
+   146→    const fetchUser = async () => {
+   147→      try {
+   148→        const res = await fetch('/api/auth/me')
+   149→        const data = await res.json()
+   150→        setUser(data.user)
+   151→      } catch { setUser(null) }
+   152→    }
+   153→    fetchUser()
+   154→  }, [])
+   155→  
+   156→  // Orientation
+   157→  useEffect(() => {
+   158→    const check = () => setIsLandscape(window.innerWidth > window.innerHeight)
+   159→    check()
+   160→    window.addEventListener('resize', check)
+   161→    return () => window.removeEventListener('resize', check)
+   162→  }, [])
+   163→  
+   164→  // Update pointer
+   165→  const updatePointer = useCallback(() => {
+   166→    const p = pointerRef.current
+   167→    if (p) {
+   168→      const x = gameModeRef.current === 'eraser' ? eraserX.current : penX.current
+   169→      const y = gameModeRef.current === 'eraser' ? eraserY.current : penY.current
+   170→      p.style.left = `${x}px`
+   171→      p.style.top = `${y}px`
+   172→      
+   173→      if (gameModeRef.current === 'eraser') {
+   174→        p.style.width = `${eraserRadius.current * 2}px`
+   175→        p.style.height = `${eraserRadius.current * 2}px`
+   176→        p.style.background = 'rgba(255,255,255,0.5)'
+   177→        p.style.border = '2px solid rgba(0,0,0,0.5)'
+   178→      } else {
+   179→        p.style.width = '8px'
+   180→        p.style.height = '8px'
+   181→        p.style.background = colorModeRef.current === 'gradient' ? '#FF6B6B' : 'black'
+   182→        p.style.border = ''
+   183→      }
+   184→    }
+   185→  }, [])
+   186→  
+   187→  // Get stroke color
+   188→  const getStrokeColor = useCallback(() => {
+   189→    if (colorModeRef.current === 'normal') return 'rgba(25, 25, 25, 0.9)'
+   190→    gradientHue.current = (gradientHue.current + 1) % 360
+   191→    const c = hslToRgb(gradientHue.current, 70, 55)
+   192→    return `rgba(${c.r}, ${c.g}, ${c.b}, 0.9)`
+   193→  }, [])
+   194→  
+   195→  // Init canvas
+   196→  const initCanvas = useCallback((forceResize = false) => {
+   197→    const canvas = canvasRef.current
+   198→    const wrapper = wrapperRef.current
+   199→    if (!canvas || !wrapper) return
+   200→    
+   201→    const rect = wrapper.getBoundingClientRect()
+   202→    if (rect.width === 0) return
+   203→    
+   204→    const needsResize = forceResize || 
+   205→      lastCanvasSize.current.width !== rect.width || 
+   206→      lastCanvasSize.current.height !== rect.height
+   207→    
+   208→    if (needsResize) {
+   209→      // Save existing drawing before resize
+   210→      let imageData: string | null = null
+   211→      const ctx = canvas.getContext('2d')
+   212→      if (canvas.width > 0 && canvas.height > 0) {
+   213→        imageData = canvas.toDataURL()
+   214→      }
+   215→      
+   216→      canvas.width = rect.width
+   217→      canvas.height = rect.height
+   218→      lastCanvasSize.current = { width: rect.width, height: rect.height }
+   219→      
+   220→      if (ctx) {
+   221→        ctx.strokeStyle = 'rgba(25, 25, 25, 0.9)'
+   222→        ctx.lineJoin = 'round'
+   223→        ctx.lineCap = 'square'
+   224→        ctx.lineWidth = 3.5
+   225→        
+   226→        // Restore drawing if we had one (in-memory, from resize)
+   227→        if (imageData) {
+   228→          const img = new Image()
+   229→          img.onload = () => {
+   230→            ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+   231→          }
+   232→          img.src = imageData
+   233→        } else if (!hasLoadedFromStorage.current) {
+   234→          // First init — try to load from localStorage
+   235→          hasLoadedFromStorage.current = true
+   236→          try {
+   237→            const saved = localStorage.getItem('sketch-canvas')
+   238→            const savedW = parseInt(localStorage.getItem('sketch-canvas-w') || '0', 10)
+   239→            const savedH = parseInt(localStorage.getItem('sketch-canvas-h') || '0', 10)
+   240→            if (saved && savedW > 0 && savedH > 0) {
+   241→              const img = new Image()
+   242→              img.onload = () => {
+   243→                // Scale saved image to current canvas size
+   244→                ctx.drawImage(img, 0, 0, savedW, savedH, 0, 0, canvas.width, canvas.height)
+   245→              }
+   246→              img.src = saved
+   247→            }
+   248→          } catch {}
+   249→        }
+   250→      }
+   251→    }
+   252→    
+   253→    if (!canvasInitialized.current) {
+   254→      penX.current = rect.width / 2
+   255→      penY.current = rect.height / 2
+   256→      lastPenX.current = penX.current
+   257→      lastPenY.current = penY.current
+   258→      
+   259→      eraserX.current = rect.width / 2
+   260→      eraserY.current = rect.height / 2
+   261→      lastEraserX.current = eraserX.current
+   262→      lastEraserY.current = eraserY.current
+   263→      
+   264→      canvasInitialized.current = true
+   265→    }
+   266→    
+   267→    updatePointer()
+   268→  }, [updatePointer])
+   269→  
+   270→  // Erase screen
+   271→  const eraseScreen = useCallback(() => {
+   272→    if (isErasing) return
+   273→    setIsErasing(true)
+   274→    setDustProgress(0)
+   275→    shakeCount.current = 0
+   276→    
+   277→    const canvas = canvasRef.current
+   278→    const toy = toyRef.current
+   279→    const ctx = canvas?.getContext('2d')
+   280→    
+   281→    if (!canvas || !ctx) {
+   282→      setIsErasing(false)
+   283→      return
+   284→    }
+   285→    
+   286→    if (toy) toy.classList.add('shaking')
+   287→    
+   288→    let opacity = 0
+   289→    const fade = setInterval(() => {
+   290→      ctx.fillStyle = 'rgba(196, 196, 196, 0.3)'
+   291→      ctx.fillRect(0, 0, canvas.width, canvas.height)
+   292→      opacity += 0.3
+   293→      if (opacity >= 1.5) {
+   294→        clearInterval(fade)
+   295→        if (toy) toy.classList.remove('shaking')
+   296→        setIsErasing(false)
+   297→        setShowDustBar(false)
+   298→        penX.current = canvas.width / 2
+   299→        penY.current = canvas.height / 2
+   300→        lastPenX.current = penX.current
+   301→        lastPenY.current = penY.current
+   302→        updatePointer()
+   303→        // Clear saved drawing — it's been erased
+   304→        clearSavedCanvas()
+   305→      }
+   306→    }, 50)
+   307→  }, [isErasing, updatePointer, clearSavedCanvas])
+   308→  
+   309→  // Erase part
+   310→  const erasePart = useCallback((x: number, y: number) => {
+   311→    const canvas = canvasRef.current
+   312→    const ctx = canvas?.getContext('2d')
+   313→    if (!ctx) return
+   314→    
+   315→    ctx.save()
+   316→    ctx.beginPath()
+   317→    ctx.arc(x, y, eraserRadius.current, 0, Math.PI * 2)
+   318→    ctx.fillStyle = '#c4c4c4'
+   319→    ctx.fill()
+   320→    ctx.restore()
+   321→    
+   322→    // Save eraser modifications too (debounced)
+   323→    saveCanvasToLocal()
+   324→  }, [saveCanvasToLocal])
+   325→  
+   326→  // Toggle color mode
+   327→  const toggleColorMode = useCallback(() => {
+   328→    const newMode = colorModeRef.current === 'normal' ? 'gradient' : 'normal'
+   329→    colorModeRef.current = newMode
+   330→    setColorMode(newMode)
+   331→    colorShakeCount.current = 0
+   332→    lastColorShakeTime.current = 0
+   333→  }, [])
+   334→  
+   335→  // Toggle eraser mode
+   336→  const toggleEraserMode = useCallback(() => {
+   337→    const newMode = gameModeRef.current === 'draw' ? 'eraser' : 'draw'
+   338→    gameModeRef.current = newMode
+   339→    setGameMode(newMode)
+   340→    
+   341→    if (newMode === 'eraser') {
+   342→      const canvas = canvasRef.current
+   343→      if (canvas) {
+   344→        eraserX.current = canvas.width / 2
+   345→        eraserY.current = canvas.height / 2
+   346→      }
+   347→    }
+   348→    
+   349→    updatePointer()
+   350→  }, [updatePointer])
+   351→  
+   352→  // Exit eraser mode
+   353→  const exitEraserMode = useCallback(() => {
+   354→    gameModeRef.current = 'draw'
+   355→    setGameMode('draw')
+   356→    updatePointer()
+   357→  }, [updatePointer])
+   358→  
+   359→  // Handle shake
+   360→  const onShakeDetected = useCallback(() => {
+   361→    if (isErasing) return
+   362→    
+   363→    const now = Date.now()
+   364→    
+   365→    // If in eraser mode, single shake exits eraser mode
+   366→    if (gameModeRef.current === 'eraser') {
+   367→      exitEraserMode()
+   368→      lastShakeTime.current = 0
+   369→      colorShakeCount.current = 0
+   370→      shakeCount.current = 0
+   371→      if (singleShakeTimer.current) {
+   372→        clearTimeout(singleShakeTimer.current)
+   373→        singleShakeTimer.current = null
+   374→      }
+   375→      return
+   376→    }
+   377→    
+   378→    const timeSinceLastShake = now - lastShakeTime.current
+   379→    
+   380→    // Fast continuous shaking (<300ms gap) → full erase
+   381→    if (timeSinceLastShake < 300 && lastShakeTime.current > 0) {
+   382→      shakeCount.current++
+   383→      lastShakeTime.current = now
+   384→      
+   385→      setShowDustBar(true)
+   386→      const progress = Math.min(100, shakeCount.current * 10)
+   387→      setDustProgress(progress)
+   388→      
+   389→      // Cancel any pending single-shake color toggle
+   390→      colorShakeCount.current = 0
+   391→      if (singleShakeTimer.current) {
+   392→        clearTimeout(singleShakeTimer.current)
+   393→        singleShakeTimer.current = null
+   394→      }
+   395→      
+   396→      if (progress >= 100) {
+   397→        eraseScreen()
+   398→        shakeCount.current = 0
+   399→        return
+   400→      }
+   401→      
+   402→      if (shakeDecayTimer.current) clearTimeout(shakeDecayTimer.current)
+   403→      shakeDecayTimer.current = setTimeout(() => {
+   404→        const decay = setInterval(() => {
+   405→          shakeCount.current = Math.max(0, shakeCount.current - 1)
+   406→          const p = shakeCount.current * 10
+   407→          setDustProgress(p)
+   408→          if (shakeCount.current <= 0) {
+   409→            clearInterval(decay)
+   410→            setShowDustBar(false)
+   411→          }
+   412→        }, 50)
+   413→      }, 300)
+   414→      return
+   415→    }
+   416→    
+   417→    // 2-shake detection (300-800ms gap) → toggle eraser
+   418→    if (timeSinceLastShake >= 300 && timeSinceLastShake <= 800) {
+   419→      colorShakeCount.current++
+   420→      lastShakeTime.current = now
+   421→      
+   422→      if (colorShakeCount.current >= 2) {
+   423→        toggleEraserMode()
+   424→        colorShakeCount.current = 0
+   425→        lastShakeTime.current = 0
+   426→        if (singleShakeTimer.current) {
+   427→          clearTimeout(singleShakeTimer.current)
+   428→          singleShakeTimer.current = null
+   429→        }
+   430→        return
+   431→      }
+   432→    } else {
+   433→      // First shake or after long pause
+   434→      colorShakeCount.current = 1
+   435→      shakeCount.current = 0
+   436→      lastShakeTime.current = now
+   437→    }
+   438→    
+   439→    // Single shake timer: if no follow-up shake within 900ms → toggle color mode
+   440→    if (singleShakeTimer.current) clearTimeout(singleShakeTimer.current)
+   441→    singleShakeTimer.current = setTimeout(() => {
+   442→      // Only toggle color if this was an isolated single shake
+   443→      if (colorShakeCount.current === 1 && shakeCount.current === 0 && gameModeRef.current === 'draw') {
+   444→        toggleColorMode()
+   445→      }
+   446→      colorShakeCount.current = 0
+   447→      lastShakeTime.current = 0
+   448→      singleShakeTimer.current = null
+   449→    }, 900)
+   450→  }, [isErasing, eraseScreen, exitEraserMode, toggleEraserMode, toggleColorMode])
+   451→  
+   452→  // Game loop
+   453→  useEffect(() => {
+   454→    if (!isStarted) return
+   455→    
+   456→    const gameLoop = () => {
+   457→      const canvas = canvasRef.current
+   458→      const ctx = canvas?.getContext('2d')
+   459→      if (!canvas) {
+   460→        rafRef.current = requestAnimationFrame(gameLoop)
+   461→        return
+   462→      }
+   463→      
+   464→      vxMove.current += (targetVxMove.current - vxMove.current) * 0.15
+   465→      vyMove.current += (targetVyMove.current - vyMove.current) * 0.15
+   466→      vxDraw.current += (targetVxDraw.current - vxDraw.current) * 0.20
+   467→      vyDraw.current += (targetVyDraw.current - vyDraw.current) * 0.20
+   468→      
+   469→      if (gameModeRef.current === 'eraser') {
+   470→        if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
+   471→          eraserX.current += vxMove.current
+   472→          eraserY.current += vyMove.current
+   473→          eraserX.current = Math.max(eraserRadius.current, Math.min(canvas.width - eraserRadius.current, eraserX.current))
+   474→          eraserY.current = Math.max(eraserRadius.current, Math.min(canvas.height - eraserRadius.current, eraserY.current))
+   475→          updatePointer()
+   476→        }
+   477→        
+   478→        if (Math.abs(vxDraw.current) > 0.5 || Math.abs(vyDraw.current) > 0.5) {
+   479→          eraserX.current += vxDraw.current * 0.5
+   480→          eraserY.current += vyDraw.current * 0.5
+   481→          eraserX.current = Math.max(eraserRadius.current, Math.min(canvas.width - eraserRadius.current, eraserX.current))
+   482→          eraserY.current = Math.max(eraserRadius.current, Math.min(canvas.height - eraserRadius.current, eraserY.current))
+   483→          
+   484→          erasePart(eraserX.current, eraserY.current)
+   485→          updatePointer()
+   486→        }
+   487→        
+   488→        rafRef.current = requestAnimationFrame(gameLoop)
+   489→        return
+   490→      }
+   491→      
+   492→      let moved = false
+   493→      
+   494→      if (Math.abs(vxMove.current) > 0.1 || Math.abs(vyMove.current) > 0.1) {
+   495→        penX.current += vxMove.current
+   496→        penY.current += vyMove.current
+   497→        moved = true
+   498→        lastPenX.current = penX.current
+   499→        lastPenY.current = penY.current
+   500→      }
+   501→      
+   502→      if (Math.abs(vxDraw.current) > 0.1 || Math.abs(vyDraw.current) > 0.1) {
+   503→        penX.current += vxDraw.current
+   504→        penY.current += vyDraw.current
+   505→        moved = true
+   506→        
+   507→        ctx.strokeStyle = getStrokeColor()
+   508→        ctx.beginPath()
+   509→        ctx.moveTo(lastPenX.current, lastPenY.current)
+   510→        ctx.lineTo(penX.current, penY.current)
+   511→        ctx.stroke()
+   512→        
+   513→        lastPenX.current = penX.current
+   514→        lastPenY.current = penY.current
+   515→        
+   516→        // Save to localStorage (debounced) — only when actually drawing
+   517→        saveCanvasToLocal()
+   518→      }
+   519→      
+   520→      if (moved) {
+   521→        penX.current = Math.max(0, Math.min(canvas.width, penX.current))
+   522→        penY.current = Math.max(0, Math.min(canvas.height, penY.current))
+   523→        updatePointer()
+   524→      }
+   525→      
+   526→      rafRef.current = requestAnimationFrame(gameLoop)
+   527→    }
+   528→    
+   529→    rafRef.current = requestAnimationFrame(gameLoop)
+   530→    if (!canvasInitialized.current) {
+   531→      initCanvas()
+   532→    }
+   533→    
+   534→    return () => cancelAnimationFrame(rafRef.current)
+   535→  }, [isStarted, initCanvas, updatePointer, getStrokeColor, erasePart, saveCanvasToLocal])
+   536→  
+   537→  // Joystick handlers
+   538→  const createJoystickHandlers = useCallback((type: 'move' | 'draw') => {
+   539→    let isActive = false
+   540→    let centerX = 0
+   541→    let centerY = 0
+   542→    let maxRadius = 50
+   543→    
+   544→    const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
+   545→      e.preventDefault()
+   546→      isActive = true
+   547→      const knob = type === 'move' ? moveKnobRef.current : drawKnobRef.current
+   548→      const rect = knob?.parentElement?.getBoundingClientRect()
+   549→      if (rect) {
+   550→        centerX = rect.left + rect.width / 2
+   551→        centerY = rect.top + rect.height / 2
+   552→        maxRadius = rect.width / 2.2
+   553→      }
+   554→    }
+   555→    
+   556→    const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
+   557→      if (!isActive) return
+   558→      e.preventDefault()
+   559→      
+   560→      const knob = type === 'move' ? moveKnobRef.current : drawKnobRef.current
+   561→      if (!knob) return
+   562→      
+   563→      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+   564→      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+   565→      
+   566→      const dx = clientX - centerX
+   567→      const dy = clientY - centerY
+   568→      const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius)
+   569→      const angle = Math.atan2(dy, dx)
+   570→      
+   571→      knob.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`
+   572→      
+   573→      const speed = Math.pow(dist / maxRadius, 1.3) * 3.5
+   574→      
+   575→      if (type === 'move') {
+   576→        targetVxMove.current = Math.cos(angle) * speed
+   577→        targetVyMove.current = Math.sin(angle) * speed
+   578→      } else {
+   579→        if (Math.abs(dx) > Math.abs(dy)) {
+   580→          targetVxDraw.current = Math.sign(dx) * speed
+   581→          targetVyDraw.current = 0
+   582→        } else {
+   583→          targetVxDraw.current = 0
+   584→          targetVyDraw.current = Math.sign(dy) * speed
+   585→        }
+   586→      }
+   587→    }
+   588→    
+   589→    const handleEnd = () => {
+   590→      if (!isActive) return
+   591→      isActive = false
+   592→      
+   593→      const knob = type === 'move' ? moveKnobRef.current : drawKnobRef.current
+   594→      if (knob) {
+   595→        knob.style.transition = 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
+   596→        knob.style.transform = 'translate(0px, 0px)'
+   597→        setTimeout(() => { if (knob) knob.style.transition = '' }, 600)
+   598→      }
+   599→      
+   600→      if (type === 'move') {
+   601→        targetVxMove.current = 0
+   602→        targetVyMove.current = 0
+   603→      } else {
+   604→        targetVxDraw.current = 0
+   605→        targetVyDraw.current = 0
+   606→      }
+   607→    }
+   608→    
+   609→    return { handleStart, handleMove, handleEnd }
+   610→  }, [])
+   611→  
+   612→  const moveHandlers = useRef(createJoystickHandlers('move'))
+   613→  const drawHandlers = useRef(createJoystickHandlers('draw'))
+   614→  
+   615→  // Device motion
+   616→  useEffect(() => {
+   617→    if (!isStarted) return
+   618→    
+   619→    let lastX = 0, lastY = 0, lastZ = 0
+   620→    let initialized = false
+   621→    
+   622→    const handleMotion = (e: DeviceMotionEvent) => {
+   623→      const acc = e.accelerationIncludingGravity
+   624→      if (!acc || acc.x === null) return
+   625→      
+   626→      const x = acc.x || 0
+   627→      const y = acc.y || 0
+   628→      const z = acc.z || 0
+   629→      
+   630→      if (!initialized) {
+   631→        lastX = x; lastY = y; lastZ = z
+   632→        initialized = true
+   633→        return
+   634→      }
+   635→      
+   636→      const dx = Math.abs(x - lastX)
+   637→      const dy = Math.abs(y - lastY)
+   638→      const dz = Math.abs(z - lastZ)
+   639→      
+   640→      if (dx > 15 || dy > 15 || dz > 15) {
+   641→        onShakeDetected()
+   642→      }
+   643→      
+   644→      lastX = x; lastY = y; lastZ = z
+   645→    }
+   646→    
+   647→    window.addEventListener('devicemotion', handleMotion)
+   648→    return () => window.removeEventListener('devicemotion', handleMotion)
+   649→  }, [isStarted, onShakeDetected])
+   650→  
+   651→  // Double tap to erase
+   652→  useEffect(() => {
+   653→    if (!isStarted) return
+   654→    let lastTap = 0
+   655→    const handle = () => {
+   656→      const now = Date.now()
+   657→      if (now - lastTap < 300) eraseScreen()
+   658→      lastTap = now
+   659→    }
+   660→    canvasRef.current?.addEventListener('dblclick', handle)
+   661→    return () => canvasRef.current?.removeEventListener('dblclick', handle)
+   662→  }, [isStarted, eraseScreen])
+   663→  
+   664→  // Start
+   665→  const handleStart = async () => {
+   666→    try {
+   667→      const elem = document.documentElement
+   668→      if (elem.requestFullscreen) await elem.requestFullscreen()
+   669→    } catch {}
+   670→    
+   671→    if (typeof DeviceMotionEvent !== 'undefined' && 
+   672→        typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+   673→      try {
+   674→        await (DeviceMotionEvent as any).requestPermission()
+   675→      } catch {}
+   676→    }
+   677→    
+   678→    setIsStarted(true)
+   679→    setTimeout(initCanvas, 100)
+   680→  }
+   681→  
+   682→  // Resize
+   683→  useEffect(() => {
+   684→    if (!isStarted) return
+   685→    const handle = () => setTimeout(() => initCanvas(true), 100)
+   686→    window.addEventListener('resize', handle)
+   687→    return () => window.removeEventListener('resize', handle)
+   688→  }, [isStarted, initCanvas])
+   689→  
+   690→  // Persist canvas before user leaves (page hide, switch tab, navigate away)
+   691→  useEffect(() => {
+   692→    if (!isStarted) return
+   693→    
+   694→    const flushSave = () => {
+   695→      // Cancel pending debounced save and save immediately
+   696→      if (saveTimer.current) {
+   697→        clearTimeout(saveTimer.current)
+   698→        saveTimer.current = null
+   699→      }
+   700→      const canvas = canvasRef.current
+   701→      if (!canvas || canvas.width === 0 || canvas.height === 0) return
+   702→      try {
+   703→        const data = canvas.toDataURL('image/jpeg', 0.7)
+   704→        localStorage.setItem('sketch-canvas', data)
+   705→        localStorage.setItem('sketch-canvas-time', Date.now().toString())
+   706→        localStorage.setItem('sketch-canvas-w', canvas.width.toString())
+   707→        localStorage.setItem('sketch-canvas-h', canvas.height.toString())
+   708→      } catch {}
+   709→    }
+   710→    
+   711→    const onVis = () => {
+   712→      if (document.visibilityState === 'hidden') flushSave()
+   713→    }
+   714→    
+   715→    document.addEventListener('visibilitychange', onVis)
+   716→    window.addEventListener('pagehide', flushSave)
+   717→    window.addEventListener('beforeunload', flushSave)
+   718→    
+   719→    return () => {
+   720→      document.removeEventListener('visibilitychange', onVis)
+   721→      window.removeEventListener('pagehide', flushSave)
+   722→      window.removeEventListener('beforeunload', flushSave)
+   723→      // Final save on unmount too
+   724→      flushSave()
+   725→    }
+   726→  }, [isStarted])
+   727→  
+   728→  // Auth submit (simple - no password)
+   729→  const handleAuthSubmit = async (e: React.FormEvent) => {
+   730→    e.preventDefault()
+   731→    setAuthError('')
+   732→    setAuthLoading(true)
+   733→    
+   734→    try {
+   735→      if (authMode === 'login') {
+   736→        const res = await fetch('/api/auth/login', {
+   737→          method: 'POST',
+   738→          headers: { 'Content-Type': 'application/json' },
+   739→          body: JSON.stringify({ email: authForm.email })
+   740→        })
+   741→        const data = await res.json()
+   742→        if (!res.ok) { setAuthError(data.error || 'Non trouvé'); return }
+   743→        setUser(data)
+   744→      } else {
+   745→        const res = await fetch('/api/auth/register', {
+   746→          method: 'POST',
+   747→          headers: { 'Content-Type': 'application/json' },
+   748→          body: JSON.stringify({ email: authForm.email, name: authForm.name })
+   749→        })
+   750→        const data = await res.json()
+   751→        if (!res.ok) { setAuthError(data.error || 'Erreur'); return }
+   752→        setUser(data)
+   753→      }
+   754→      setShowAuthModal(false)
+   755→      setAuthForm({ email: '', name: '', password: '' })
+   756→    } catch {
+   757→      setAuthError('Erreur de connexion')
+   758→    } finally {
+   759→      setAuthLoading(false)
+   760→    }
+   761→  }
+   762→  
+   763→  // Logout
+   764→  const handleLogout = async () => {
+   765→    await fetch('/api/auth/logout', { method: 'POST' })
+   766→    setUser(null)
+   767→    setShowMenu(false)
+   768→  }
+   769→  
+   770→  // Open save modal
+   771→  const openSaveModal = () => {
+   772→    if (!user) {
+   773→      setShowAuthModal(true)
+   774→      return
+   775→    }
+   776→    setSaveTitle('')
+   777→    setSavePublic(true)
+   778→    setSaveError('')
+   779→    setShowSaveModal(true)
+   780→    setShowMenu(false)
+   781→  }
+   782→  
+   783→  // Save drawing
+   784→  const handleSaveDrawing = async (e: React.FormEvent) => {
+   785→    e.preventDefault()
+   786→    
+   787→    const canvas = canvasRef.current
+   788→    if (!canvas) { setSaveError('Erreur: canvas non trouvé'); return }
+   789→    
+   790→    const imageData = canvas.toDataURL('image/png')
+   791→    if (!imageData || imageData === 'data:,') {
+   792→      setSaveError('Erreur: impossible de capturer le dessin')
+   793→      return
+   794→    }
+   795→    
+   796→    setSaveLoading(true)
+   797→    setSaveError('')
+   798→    
+   799→    try {
+   800→      // Compress
+   801→      const img = new Image()
+   802→      await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = imageData })
+   803→      const maxW = 800
+   804→      const scale = Math.min(1, maxW / img.width)
+   805→      const off = document.createElement('canvas')
+   806→      off.width = img.width * scale
+   807→      off.height = img.height * scale
+   808→      off.getContext('2d')!.drawImage(img, 0, 0, off.width, off.height)
+   809→      const compressed = off.toDataURL('image/jpeg', 0.7)
+   810→      
+   811→      const res = await fetch('/api/drawings', {
+   812→        method: 'POST',
+   813→        headers: { 'Content-Type': 'application/json' },
+   814→        body: JSON.stringify({ title: saveTitle || 'Mon dessin', imageData: compressed, isPublic: savePublic })
+   815→      })
+   816→      const data = await res.json()
+   817→      if (!res.ok) { setSaveError(data.error || 'Erreur'); return }
+   818→      
+   819→      setShowSaveModal(false)
+   820→      router.push('/classement')
+   821→    } catch {
+   822→      setSaveError('Erreur de connexion')
+   823→    } finally {
+   824→      setSaveLoading(false)
+   825→    }
+   826→  }
+   827→  
+   828→  return (
+   829→    <div className="fixed inset-0 bg-[#080808] flex justify-center items-center overflow-hidden touch-none select-none">
+   830→      <style jsx global>{`
+   831→        @keyframes shakeFast {
+   832→          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+   833→          20%, 60% { transform: translate(-15px, 8px) rotate(-1deg); }
+   834→          40%, 80% { transform: translate(15px, -8px) rotate(1deg); }
+   835→        }
+   836→        @keyframes slideDown {
+   837→          from { opacity: 0; transform: translateY(-10px); }
+   838→          to { opacity: 1; transform: translateY(0); }
+   839→        }
+   840→        .shaking { animation: shakeFast 0.6s ease-in-out; }
+   841→        .menu-slide { animation: slideDown 0.2s ease-out; }
+   842→      `}</style>
+   843→      
+   844→      {/* Orientation */}
+   845→      {!isLandscape && (
+   846→        <div className="absolute inset-0 bg-black/98 text-white z-[99999] flex flex-col justify-center items-center text-center p-5">
+   847→          <svg className="w-20 h-20 mb-4" viewBox="0 0 24 24" fill="currentColor">
+   848→            <path d="M16,1H8C6.34,1 5,2.34 5,4V20C5,21.66 6.34,23 8,23H16C17.66,23 19,21.66 19,20V4C19,2.34 17.66,1 16,1M17,19H7V5H17V19Z"/>
+   849→          </svg>
+   850→          <h2 className="text-xl font-bold">Mode Paysage Requis</h2>
+   851→        </div>
+   852→      )}
+   853→      
+   854→      {/* Main Etch-A-Sketch */}
+   855→      <div 
+   856→        ref={toyRef}
+   857→        className="relative w-full h-full max-w-[1200px] bg-[#d10a0a] rounded-[4vh] flex flex-col items-center p-[4vh_4vw]"
+   858→        style={{
+   859→          boxShadow: 'inset 15px 15px 30px rgba(255,255,255,0.2), inset -15px -15px 30px rgba(0,0,0,0.5), 0 20px 50px rgba(0,0,0,0.9)'
+   860→        }}
+   861→      >
+   862→        {/* Top bar */}
+   863→        {isStarted && (
+   864→          <div className="absolute top-[1.5vh] left-[2vw] right-[2vw] z-[1002] flex justify-between items-center">
+   865→            {gameMode === 'draw' && (
+   866→              <div 
+   867→                className="text-white/80 text-[1.2vh] font-bold tracking-wider text-center whitespace-nowrap px-3 py-1.5 rounded-full"
+   868→                style={{ background: 'rgba(0,0,0,0.3)' }}
+   869→              >
+   870→                2 secousses = Gomme | Vite = Tout effacer
+   871→              </div>
+   872→            )}
+   873→            
+   874→            {gameMode === 'eraser' && (
+   875→              <div 
+   876→                className="text-white text-[1.2vh] font-bold tracking-wider px-3 py-1.5 rounded-full flex items-center gap-2"
+   877→                style={{ 
+   878→                  background: 'linear-gradient(135deg, rgba(78,205,196,0.8), rgba(69,183,209,0.8))',
+   879→                  boxShadow: '0 0 15px rgba(78,205,196,0.3)'
+   880→                }}
+   881→              >
+   882→                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+   883→                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+   884→                </svg>
+   885→                MODE GOMME
+   886→                <button 
+   887→                  onClick={exitEraserMode}
+   888→                  className="ml-1 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors text-[10px]"
+   889→                >
+   890→                  ✕
+   891→                </button>
+   892→              </div>
+   893→            )}
+   894→            
+   895→            {/* Menu button */}
+   896→            <button
+   897→              onClick={() => setShowMenu(!showMenu)}
+   898→              className="w-10 h-10 rounded-full flex flex-col justify-center items-center gap-1 transition-all duration-300"
+   899→              style={{ 
+   900→                background: showMenu ? 'rgba(212,175,55,0.9)' : 'rgba(0,0,0,0.4)',
+   901→                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none'
+   902→              }}
+   903→            >
+   904→              <span 
+   905→                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+   906→                style={{ transform: showMenu ? 'rotate(45deg) translateY(4px)' : 'none' }}
+   907→              />
+   908→              <span 
+   909→                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+   910→                style={{ opacity: showMenu ? 0 : 1 }}
+   911→              />
+   912→              <span 
+   913→                className="w-4 h-0.5 bg-white rounded transition-all duration-300"
+   914→                style={{ transform: showMenu ? 'rotate(-45deg) translateY(-4px)' : 'none' }}
+   915→              />
+   916→            </button>
+   917→          </div>
+   918→        )}
+   919→        
+   920→        {/* Dropdown menu */}
+   921→        {isStarted && showMenu && (
+   922→          <div 
+   923→            className="absolute top-[6vh] right-[2vw] z-[1001] rounded-xl overflow-hidden menu-slide"
+   924→            style={{
+   925→              background: 'linear-gradient(145deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98))',
+   926→              boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+   927→              border: '1px solid rgba(212,175,55,0.3)'
+   928→            }}
+   929→          >
+   930→            {/* User info */}
+   931→            {user && (
+   932→              <div className="px-4 py-2 border-b border-white/10">
+   933→                <div className="text-white text-sm font-bold">{user.name}</div>
+   934→                <div className="text-white/50 text-[10px]">{user.email}</div>
+   935→              </div>
+   936→            )}
+   937→            
+   938→            {/* Classement */}
+   939→            <button
+   940→              onClick={() => {
+   941→                setShowMenu(false)
+   942→                router.push('/classement')
+   943→              }}
+   944→              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+   945→            >
+   946→              <div 
+   947→                className="w-8 h-8 rounded-lg flex items-center justify-center"
+   948→                style={{ background: 'linear-gradient(135deg, #d4af37, #b8962e)' }}
+   949→              >
+   950→                <span className="text-black text-sm">🏆</span>
+   951→              </div>
+   952→              <div className="text-left">
+   953→                <div className="text-white text-sm font-bold">Classement</div>
+   954→                <div className="text-white/50 text-[10px]">Voir les dessins</div>
+   955→              </div>
+   956→            </button>
+   957→            
+   958→            {/* Save */}
+   959→            <button
+   960→              onClick={openSaveModal}
+   961→              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+   962→            >
+   963→              <div 
+   964→                className="w-8 h-8 rounded-lg flex items-center justify-center"
+   965→                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
+   966→              >
+   967→                <span className="text-white text-sm">💾</span>
+   968→              </div>
+   969→              <div className="text-left">
+   970→                <div className="text-white text-sm font-bold">
+   971→                  {user ? 'Sauvegarder' : 'Connexion requise'}
+   972→                </div>
+   973→                <div className="text-white/50 text-[10px]">Partager votre dessin</div>
+   974→              </div>
+   975→            </button>
+   976→            
+   977→            {/* Eraser toggle */}
+   978→            <button
+   979→              onClick={() => {
+   980→                toggleEraserMode()
+   981→                setShowMenu(false)
+   982→              }}
+   983→              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+   984→            >
+   985→              <div 
+   986→                className="w-8 h-8 rounded-lg flex items-center justify-center"
+   987→                style={{ 
+   988→                  background: gameMode === 'eraser' 
+   989→                    ? 'linear-gradient(135deg, #4ECDC4, #45B7D1)' 
+   990→                    : 'linear-gradient(135deg, #d4af37, #b8962e)'
+   991→                }}
+   992→              >
+   993→                <svg className="w-4 h-4 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+   994→                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+   995→                </svg>
+   996→              </div>
+   997→              <div className="text-left">
+   998→                <div className="text-white text-sm font-bold">
+   999→                  {gameMode === 'eraser' ? 'Quitter Gomme' : 'Gomme'}
+  1000→                </div>
+  1001→                <div className="text-white/50 text-[10px]">
+  1002→                  {gameMode === 'eraser' ? 'Retour au dessin' : 'Effacer une partie'}
+  1003→                </div>
+  1004→              </div>
+  1005→            </button>
+  1006→            
+  1007→            {/* Color mode toggle */}
+  1008→            <button
+  1009→              onClick={() => {
+  1010→                toggleColorMode()
+  1011→                setShowMenu(false)
+  1012→              }}
+  1013→              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+  1014→            >
+  1015→              <div 
+  1016→                className="w-8 h-8 rounded-lg flex items-center justify-center"
+  1017→                style={{ 
+  1018→                  background: colorMode === 'gradient' 
+  1019→                    ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)' 
+  1020→                    : 'linear-gradient(135deg, #1a1a1a, #3a3a3a)'
+  1021→                }}
+  1022→              >
+  1023→                <div 
+  1024→                  className="w-3 h-3 rounded-full"
+  1025→                  style={{ 
+  1026→                    background: colorMode === 'gradient' ? 'rgba(255,255,255,0.7)' : '#000',
+  1027→                    border: colorMode === 'gradient' ? 'none' : '1px solid #555'
+  1028→                  }}
+  1029→                />
+  1030→              </div>
+  1031→              <div className="text-left">
+  1032→                <div className="text-white text-sm font-bold">
+  1033→                  {colorMode === 'gradient' ? 'Couleur Dégradé' : 'Pinceau Noir'}
+  1034→                </div>
+  1035→                <div className="text-white/50 text-[10px]">
+  1036→                  {colorMode === 'gradient' ? 'Passer au noir' : 'Passer en dégradé'}
+  1037→                </div>
+  1038→              </div>
+  1039→            </button>
+  1040→            
+  1041→            {/* Login/Logout */}
+  1042→            {user ? (
+  1043→              <button
+  1044→                onClick={handleLogout}
+  1045→                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors border-t border-white/10"
+  1046→              >
+  1047→                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-600/80">
+  1048→                  <span className="text-white text-sm">🚪</span>
+  1049→                </div>
+  1050→                <div className="text-left">
+  1051→                  <div className="text-white text-sm font-bold">Déconnexion</div>
+  1052→                </div>
+  1053→              </button>
+  1054→            ) : (
+  1055→              <button
+  1056→                onClick={() => {
+  1057→                  setShowMenu(false)
+  1058→                  setShowAuthModal(true)
+  1059→                }}
+  1060→                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors border-t border-white/10"
+  1061→              >
+  1062→                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-600/80">
+  1063→                  <span className="text-white text-sm">👤</span>
+  1064→                </div>
+  1065→                <div className="text-left">
+  1066→                  <div className="text-white text-sm font-bold">Connexion</div>
+  1067→                  <div className="text-white/50 text-[10px]">Sauvegarder vos dessins</div>
+  1068→                </div>
+  1069→              </button>
+  1070→            )}
+  1071→          </div>
+  1072→        )}
+  1073→        
+  1074→        {/* Screen bezel */}
+  1075→        <div 
+  1076→          className="relative w-[90%] h-[68%] bg-[#d4d4d4] rounded-[2.5vh] p-[1.5vh]"
+  1077→          style={{ boxShadow: 'inset 6px 6px 18px rgba(0,0,0,0.5), inset -6px -6px 18px rgba(255,255,255,0.9)' }}
+  1078→        >
+  1079→          <div 
+  1080→            ref={wrapperRef}
+  1081→            className="relative w-full h-full rounded-[1.5vh] overflow-hidden" 
+  1082→            style={{ boxShadow: 'inset 3px 3px 10px rgba(0,0,0,0.4)' }}
+  1083→          >
+  1084→            <canvas
+  1085→              ref={canvasRef}
+  1086→              className="w-full h-full block"
+  1087→              style={{
+  1088→                backgroundColor: '#c4c4c4',
+  1089→                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E")`
+  1090→              }}
+  1091→            />
+  1092→            
+  1093→            {/* Pointer */}
+  1094→            <div
+  1095→              ref={pointerRef}
+  1096→              className="absolute w-2 h-2 bg-black rounded-full pointer-events-none z-10"
+  1097→              style={{ 
+  1098→                transform: 'translate(-50%, -50%)',
+  1099→                boxShadow: '0 0 0 2px rgba(255,255,255,0.7)'
+  1100→              }}
+  1101→            />
+  1102→            
+  1103→            {/* Dust bar */}
+  1104→            {showDustBar && (
+  1105→              <div className="absolute top-0 left-0 right-0 h-[6px] bg-black/15 z-50 rounded-t-[1.5vh] overflow-hidden">
+  1106→                <div
+  1107→                  className="h-full"
+  1108→                  style={{
+  1109→                    width: `${dustProgress}%`,
+  1110→                    background: 'linear-gradient(90deg, #d4af37, #ff6b35, #ff2222)',
+  1111→                    boxShadow: '0 0 8px rgba(255,100,50,0.6)'
+  1112→                  }}
+  1113→                />
+  1114→              </div>
+  1115→            )}
+  1116→            
+  1117→            {/* Start button */}
+  1118→            {!isStarted && isLandscape && (
+  1119→              <div className="absolute inset-0 z-[10000] flex justify-center items-center pointer-events-none">
+  1120→                <button
+  1121→                  onClick={handleStart}
+  1122→                  className="bg-[#d4af37] text-black border-[3px] border-white px-[5vw] py-[2.5vh] text-[2.5vh] font-bold rounded-full cursor-pointer uppercase tracking-wider pointer-events-auto"
+  1123→                  style={{ boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}
+  1124→                >
+  1125→                  À toi de jouer !
+  1126→                </button>
+  1127→              </div>
+  1128→            )}
+  1129→          </div>
+  1130→        </div>
+  1131→        
+  1132→        {/* Logo */}
+  1133→        <div className="flex-grow flex justify-center items-center relative">
+  1134→          <div 
+  1135→            className="text-[#d4af37] text-[4vh] italic font-bold tracking-wider"
+  1136→            style={{ fontFamily: 'Georgia, serif', textShadow: '2px 2px 3px rgba(0,0,0,0.7), -1px -1px 0 rgba(255,255,255,0.3)' }}
+  1137→          >
+  1138→            Sketch Challenge
+  1139→          </div>
+  1140→          <div className="absolute -bottom-[2.5vh] text-white/50 text-[1.5vh] tracking-widest uppercase">
+  1141→            Designed by <span className="text-[#d4af37]">Aeron</span>
+  1142→          </div>
+  1143→        </div>
+  1144→        
+  1145→        {/* Joysticks */}
+  1146→        {isStarted && (
+  1147→          <>
+  1148→            {/* Move joystick */}
+  1149→            <div
+  1150→              className="absolute bottom-[3vh] left-[4vw] w-[18vh] h-[18vh] min-w-[100px] min-h-[100px] max-w-[150px] max-h-[150px] rounded-full bg-black/10 flex justify-center items-center"
+  1151→              style={{ boxShadow: 'inset 4px 4px 12px rgba(0,0,0,0.4)' }}
+  1152→              onTouchStart={moveHandlers.current.handleStart}
+  1153→              onTouchMove={moveHandlers.current.handleMove}
+  1154→              onTouchEnd={moveHandlers.current.handleEnd}
+  1155→              onMouseDown={moveHandlers.current.handleStart}
+  1156→              onMouseMove={moveHandlers.current.handleMove}
+  1157→              onMouseUp={moveHandlers.current.handleEnd}
+  1158→              onMouseLeave={moveHandlers.current.handleEnd}
+  1159→            >
+  1160→              <div
+  1161→                ref={moveKnobRef}
+  1162→                className="w-[65%] h-[65%] rounded-full flex justify-center items-center cursor-grab active:cursor-grabbing"
+  1163→                style={{ 
+  1164→                  background: gameMode === 'eraser' 
+  1165→                    ? 'linear-gradient(135deg, #fff, #ccc)' 
+  1166→                    : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', 
+  1167→                  boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)' 
+  1168→                }}
+  1169→              >
+  1170→                <div className="w-[35%] h-[35%] rounded-full bg-[#d0d0d0]" style={{ boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' }} />
+  1171→              </div>
+  1172→              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>
+  1173→                {gameMode === 'eraser' ? 'DEPLACER' : 'POSITION'}
+  1174→              </div>
+  1175→            </div>
+  1176→            
+  1177→            {/* Draw/Erase joystick */}
+  1178→            <div
+  1179→              className="absolute bottom-[3vh] right-[4vw] w-[18vh] h-[18vh] min-w-[100px] min-h-[100px] max-w-[150px] max-h-[150px] rounded-full bg-black/10 flex justify-center items-center"
+  1180→              style={{ boxShadow: 'inset 4px 4px 12px rgba(0,0,0,0.4)' }}
+  1181→              onTouchStart={drawHandlers.current.handleStart}
+  1182→              onTouchMove={drawHandlers.current.handleMove}
+  1183→              onTouchEnd={drawHandlers.current.handleEnd}
+  1184→              onMouseDown={drawHandlers.current.handleStart}
+  1185→              onMouseMove={drawHandlers.current.handleMove}
+  1186→              onMouseUp={drawHandlers.current.handleEnd}
+  1187→              onMouseLeave={drawHandlers.current.handleEnd}
+  1188→            >
+  1189→              <div
+  1190→                ref={drawKnobRef}
+  1191→                className="w-[65%] h-[65%] rounded-full flex justify-center items-center cursor-grab active:cursor-grabbing"
+  1192→                style={{ 
+  1193→                  background: gameMode === 'eraser' 
+  1194→                    ? 'linear-gradient(135deg, #fff, #aaa)' 
+  1195→                    : colorMode === 'gradient' 
+  1196→                      ? 'linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1)' 
+  1197→                      : 'radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0)', 
+  1198→                  boxShadow: '-3px -3px 8px rgba(255,255,255,0.9), 5px 5px 15px rgba(0,0,0,0.4)' 
+  1199→                }}
+  1200→              >
+  1201→                <div 
+  1202→                  className="w-[35%] h-[35%] rounded-full" 
+  1203→                  style={{ 
+  1204→                    background: gameMode === 'eraser' || colorMode === 'gradient' ? 'rgba(255,255,255,0.5)' : '#d0d0d0', 
+  1205→                    boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)' 
+  1206→                  }} 
+  1207→                />
+  1208→              </div>
+  1209→              <div className="absolute -bottom-[4vh] text-white text-[1.5vh] font-bold" style={{ textShadow: '1px 1px 3px #000' }}>
+  1210→                {gameMode === 'eraser' ? 'EFFACER' : 'DESSIN'}
+  1211→              </div>
+  1212→            </div>
+  1213→          </>
+  1214→        )}
+  1215→      </div>
+  1216→      
+  1217→      {/* Auth Modal */}
+  1218→      {showAuthModal && (
+  1219→        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+  1220→          <div 
+  1221→            className="w-[90vw] max-w-[400px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl overflow-hidden"
+  1222→            style={{ maxHeight: '80vh' }}
+  1223→          >
+  1224→            <div className="bg-black/30 p-3 flex justify-between items-center">
+  1225→              <h2 className="text-white text-lg font-bold">
+  1226→                {authMode === 'login' ? 'Connexion' : 'Inscription'}
+  1227→              </h2>
+  1228→              <button
+  1229→                onClick={() => setShowAuthModal(false)}
+  1230→                className="text-white/60 hover:text-white text-xl"
+  1231→              >
+  1232→                ✕
+  1233→              </button>
+  1234→            </div>
+  1235→            
+  1236→            <form onSubmit={handleAuthSubmit} className="p-4 space-y-3">
+  1237→              {authError && (
+  1238→                <div className="text-red-400 text-sm text-center">{authError}</div>
+  1239→              )}
+  1240→              
+  1241→              <input
+  1242→                type="email"
+  1243→                placeholder="Ton identifiant unique (ex: aaron@sketch)"
+  1244→                value={authForm.email}
+  1245→                onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+  1246→                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+  1247→                required
+  1248→              />
+  1249→              
+  1250→              {authMode === 'register' && (
+  1251→                <input
+  1252→                  type="text"
+  1253→                  placeholder="Ton nom d'artiste"
+  1254→                  value={authForm.name}
+  1255→                  onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
+  1256→                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+  1257→                  required
+  1258→                />
+  1259→              )}
+  1260→              
+  1261→              <button
+  1262→                type="submit"
+  1263→                disabled={authLoading}
+  1264→                className="w-full py-2 bg-[#d4af37] text-black font-bold rounded-lg hover:bg-[#e5c048] transition-colors disabled:opacity-50"
+  1265→              >
+  1266→                {authLoading ? 'Chargement...' : (authMode === 'login' ? 'Se connecter' : "S'inscrire")}
+  1267→              </button>
+  1268→              
+  1269→              <button
+  1270→                type="button"
+  1271→                onClick={() => {
+  1272→                  setAuthMode(authMode === 'login' ? 'register' : 'login')
+  1273→                  setAuthError('')
+  1274→                }}
+  1275→                className="w-full text-white/60 text-sm hover:text-white"
+  1276→              >
+  1277→                {authMode === 'login' ? "Pas de compte? S'inscrire" : 'Déjà un compte? Se connecter'}
+  1278→              </button>
+  1279→            </form>
+  1280→          </div>
+  1281→        </div>
+  1282→      )}
+  1283→      
+  1284→      {/* Save Modal */}
+  1285→      {showSaveModal && (
+  1286→        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+  1287→          <div 
+  1288→            className="w-[90vw] max-w-[500px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl overflow-hidden"
+  1289→            style={{ maxHeight: '85vh' }}
+  1290→          >
+  1291→            <div className="bg-black/30 p-3 flex justify-between items-center">
+  1292→              <h2 className="text-white text-lg font-bold">Sauvegarder le dessin</h2>
+  1293→              <button
+  1294→                onClick={() => setShowSaveModal(false)}
+  1295→                className="text-white/60 hover:text-white text-xl"
+  1296→              >
+  1297→                ✕
+  1298→              </button>
+  1299→            </div>
+  1300→            
+  1301→            <form onSubmit={handleSaveDrawing} className="p-4 space-y-3">
+  1302→              {/* Preview */}
+  1303→              <div className="w-full aspect-video bg-[#c4c4c4] rounded-lg overflow-hidden">
+  1304→                <img
+  1305→                  src={canvasRef.current?.toDataURL('image/png') || ''}
+  1306→                  alt="Aperçu"
+  1307→                  className="w-full h-full object-contain"
+  1308→                />
+  1309→              </div>
+  1310→              
+  1311→              {saveError && (
+  1312→                <div className="text-red-400 text-sm text-center">{saveError}</div>
+  1313→              )}
+  1314→              
+  1315→              <input
+  1316→                type="text"
+  1317→                placeholder="Titre du dessin"
+  1318→                value={saveTitle}
+  1319→                onChange={e => setSaveTitle(e.target.value)}
+  1320→                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-[#d4af37]"
+  1321→              />
+  1322→              
+  1323→              <label className="flex items-center gap-2 text-white">
+  1324→                <input
+  1325→                  type="checkbox"
+  1326→                  checked={savePublic}
+  1327→                  onChange={e => setSavePublic(e.target.checked)}
+  1328→                  className="w-4 h-4 rounded"
+  1329→                />
+  1330→                <span className="text-sm">Rendre public (visible dans le classement)</span>
+  1331→              </label>
+  1332→              
+  1333→              <button
+  1334→                type="submit"
+  1335→                disabled={saveLoading}
+  1336→                className="w-full py-2 bg-[#22c55e] text-white font-bold rounded-lg hover:bg-[#16a34a] transition-colors disabled:opacity-50"
+  1337→              >
+  1338→                {saveLoading ? 'Sauvegarde...' : 'Sauvegarder'}
+  1339→              </button>
+  1340→            </form>
+  1341→          </div>
+  1342→        </div>
+  1343→      )}
+  1344→    </div>
+  1345→  )
+  1346→}
+  1347→
