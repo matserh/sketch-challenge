@@ -7,282 +7,471 @@ export default function LandingPage() {
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%)',
-        color: '#fff',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        padding: '24px 16px 48px',
+        background: '#fff',
+        color: '#000',
+        fontFamily: 'Times New Roman, Georgia, serif',
+        padding: '0',
         boxSizing: 'border-box',
       }}
     >
+      {/* Top red bar */}
+      <div
+        style={{
+          background: '#C8102E',
+          color: '#fff',
+          padding: '6px 12px',
+          textAlign: 'center',
+          fontSize: '11px',
+          letterSpacing: '2px',
+          textTransform: 'uppercase',
+          fontWeight: 'bold',
+          borderBottom: '3px solid #000',
+        }}
+      >
+        ★ Sketch Challenge ★ — Version Test — Mobile Uniquement
+      </div>
+
       {/* Header */}
       <header
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          maxWidth: '960px',
-          margin: '0 auto 64px',
-          flexWrap: 'wrap',
-          gap: '12px',
+          background: '#C8102E',
+          color: '#fff',
+          padding: '20px 16px',
+          borderBottom: '4px double #000',
+          textAlign: 'center',
         }}
       >
         <div
           style={{
-            color: '#d4af37',
+            fontSize: '42px',
+            fontWeight: 'bold',
+            letterSpacing: '-1px',
             fontStyle: 'italic',
-            fontWeight: 700,
-            fontSize: '22px',
-            fontFamily: 'Georgia, serif',
+            textShadow: '2px 2px 0 #000',
+            lineHeight: 1,
           }}
         >
-          Sketch Challenge
+          SKETCH
         </div>
-        <nav style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-          <Link
-            href="/play"
-            style={{
-              color: '#fff',
-              textDecoration: 'none',
-              fontSize: '14px',
-              padding: '6px 14px',
-              border: '1px solid #444',
-              borderRadius: '4px',
-            }}
-          >
-            Jouer
-          </Link>
-          <Link
-            href="/classement"
-            style={{
-              color: '#fff',
-              textDecoration: 'none',
-              fontSize: '14px',
-              padding: '6px 14px',
-              border: '1px solid #444',
-              borderRadius: '4px',
-            }}
-          >
-            Classement
-          </Link>
-        </nav>
+        <div
+          style={{
+            fontSize: '42px',
+            fontWeight: 'bold',
+            letterSpacing: '-1px',
+            fontStyle: 'italic',
+            textShadow: '2px 2px 0 #000',
+            lineHeight: 1,
+            marginTop: '-4px',
+          }}
+        >
+          CHALLENGE
+        </div>
+        <div
+          style={{
+            marginTop: '8px',
+            fontSize: '11px',
+            color: '#fff',
+            opacity: 0.85,
+          }}
+        >
+          Le jeu de dessin à deux joysticks, comme un vrai Etch-A-Sketch.
+        </div>
       </header>
 
-      {/* Hero */}
-      <main style={{ maxWidth: '960px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+      {/* Nav */}
+      <nav
+        style={{
+          background: '#f0f0f0',
+          borderBottom: '2px solid #000',
+          padding: '8px 12px',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Link
+          href="/play"
+          style={{
+            background: '#C8102E',
+            color: '#fff',
+            padding: '8px 16px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            border: '2px solid #000',
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          ▶ JOUER
+        </Link>
+        <Link
+          href="/classement"
+          style={{
+            background: '#fff',
+            color: '#000',
+            padding: '8px 16px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            border: '2px solid #000',
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          🏆 CLASSEMENT
+        </Link>
+      </nav>
+
+      {/* Hero - mockup of the toy */}
+      <section
+        style={{
+          padding: '32px 16px',
+          textAlign: 'center',
+          borderBottom: '2px solid #000',
+        }}
+      >
+        {/* Crude Etch-A-Sketch mockup */}
+        <div
+          style={{
+            display: 'inline-block',
+            background: '#C8102E',
+            border: '4px solid #000',
+            borderRadius: '12px',
+            padding: '20px 16px 30px',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '6px 6px 0 #000',
+          }}
+        >
+          {/* Screen */}
           <div
             style={{
-              display: 'inline-block',
-              padding: '4px 12px',
-              background: '#1f1f1f',
-              border: '1px solid #333',
-              borderRadius: '20px',
-              fontSize: '12px',
-              color: '#888',
-              marginBottom: '24px',
-              letterSpacing: '1px',
+              background: '#c4c4c4',
+              border: '3px solid #000',
+              borderRadius: '6px',
+              height: '180px',
+              marginBottom: '14px',
+              padding: '10px',
+              position: 'relative',
+              overflow: 'hidden',
             }}
           >
-            MOBILE · LANDSCAPE · SHAKE
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: '#000',
+                fontSize: '14px',
+                fontStyle: 'italic',
+                textAlign: 'center',
+                fontFamily: 'cursive',
+                lineHeight: 1.4,
+              }}
+            >
+              ~ votre dessin apparaît ici ~
+              <br />
+              <span style={{ fontSize: '11px' }}>
+                (tourne ton téléphone en mode paysage)
+              </span>
+            </div>
           </div>
-          <h1
-            style={{
-              fontSize: 'clamp(32px, 8vw, 56px)',
-              fontWeight: 800,
-              margin: '0 0 16px',
-              lineHeight: 1.1,
-              letterSpacing: '-1px',
-            }}
-          >
-            Dessine avec{' '}
-            <span style={{ color: '#d4af37' }}>deux joysticks</span>
-            <br />
-            comme sur un vrai Etch-A-Sketch.
-          </h1>
-          <p
-            style={{
-              fontSize: '16px',
-              color: '#999',
-              maxWidth: '600px',
-              margin: '0 auto 32px',
-              lineHeight: 1.6,
-            }}
-          >
-            Un jeu mobile expérimental inspiré du jouet classique. Deux
-            joysticks, un pour positionner le pinceau, l&apos;autre pour dessiner.
-            Secoue ton téléphone pour effacer — exactement comme dans
-            l&apos;original, mais en mieux.
-          </p>
+          {/* Knobs */}
           <div
             style={{
               display: 'flex',
-              gap: '12px',
-              justifyContent: 'center',
-              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              padding: '0 6px',
             }}
           >
-            <Link
-              href="/play"
+            <div
               style={{
-                display: 'inline-block',
-                background: '#d4af37',
-                color: '#000',
-                padding: '14px 28px',
-                borderRadius: '4px',
-                textDecoration: 'none',
-                fontWeight: 700,
-                fontSize: '15px',
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                background: '#fff',
+                border: '3px solid #000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                fontFamily: 'Arial, sans-serif',
               }}
             >
-              ▶ Commencer à dessiner
-            </Link>
-            <Link
-              href="/classement"
+              ◐
+            </div>
+            <div
               style={{
-                display: 'inline-block',
-                background: 'transparent',
-                color: '#fff',
-                padding: '14px 28px',
-                border: '1px solid #444',
-                borderRadius: '4px',
-                textDecoration: 'none',
-                fontWeight: 600,
-                fontSize: '15px',
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                background: '#fff',
+                border: '3px solid #000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                fontFamily: 'Arial, sans-serif',
               }}
             >
-              Voir le classement
-            </Link>
+              ◑
+            </div>
           </div>
           <div
             style={{
-              marginTop: '16px',
-              fontSize: '11px',
-              color: '#666',
+              marginTop: '6px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '0 4px',
+              fontSize: '9px',
+              color: '#fff',
+              fontFamily: 'Arial, sans-serif',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
             }}
           >
-            ⚠ Tourne ton téléphone en mode paysage pour jouer
+            <span>Position</span>
+            <span>Dessin</span>
           </div>
         </div>
 
-        {/* Features */}
-        <section
+        <h1
           style={{
+            fontSize: '24px',
+            fontWeight: 'bold',
+            margin: '28px 0 10px',
+            lineHeight: 1.2,
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+          }}
+        >
+          Dessine comme en 1985.
+          <br />
+          Mais sur ton téléphone.
+        </h1>
+        <p
+          style={{
+            fontSize: '14px',
+            margin: '0 auto 20px',
+            maxWidth: '480px',
+            lineHeight: 1.5,
+            color: '#333',
+          }}
+        >
+          Deux joysticks. Un pour positionner le pinceau, l&apos;autre pour
+          tracer. Secoue ton téléphone pour effacer — exactement comme le vrai
+          jouet, mais en mieux. Sauvegarde tes dessins et affronte la
+          communauté.
+        </p>
+        <Link
+          href="/play"
+          style={{
+            display: 'inline-block',
+            background: '#C8102E',
+            color: '#fff',
+            padding: '14px 32px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            fontSize: '16px',
+            border: '3px solid #000',
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+            boxShadow: '4px 4px 0 #000',
+          }}
+        >
+          ▶ À toi de jouer
+        </Link>
+      </section>
+
+      {/* Features */}
+      <section
+        style={{
+          padding: '32px 16px',
+          background: '#fff',
+          borderBottom: '2px solid #000',
+        }}
+      >
+        <h2
+          style={{
+            textAlign: 'center',
+            fontSize: '20px',
+            margin: '0 0 24px',
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+            textDecoration: 'underline',
+          }}
+        >
+          Ce que tu peux faire
+        </h2>
+        <div
+          style={{
+            maxWidth: '720px',
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {[
+            {
+              icon: '🎮',
+              title: 'Double joystick',
+              text: "Bouge le pinceau d'un côté, trace de l'autre. Comme le vrai jouet d'époque.",
+            },
+            {
+              icon: '🌈',
+              title: 'Couleur ou noir',
+              text: "Secoue une fois pour basculer entre le pinceau noir classique et le mode dégradé.",
+            },
+            {
+              icon: '💧',
+              title: 'Gomme',
+              text: 'Deux secouements = gomme locale. Secouements rapides = tout effacer.',
+            },
+            {
+              icon: '🏆',
+              title: 'Classement',
+              text: 'Sauvegarde, partage, reçois des votes 💚🩵❤️❌ et grimpe au classement.',
+            },
+            {
+              icon: '🔐',
+              title: 'Compte simple',
+              text: 'Un email fictif, pas de mot de passe. Chaque identifiant est unique.',
+            },
+            {
+              icon: '📱',
+              title: 'Mobile paysage',
+              text: "Pensé pour téléphone en mode paysage. Tourne ton écran pour jouer.",
+            },
+          ].map((f, i) => (
+            <div
+              key={i}
+              style={{
+                background: '#fff',
+                border: '2px solid #000',
+                padding: '12px',
+                fontFamily: 'Arial, sans-serif',
+              }}
+            >
+              <div style={{ fontSize: '20px', marginBottom: '6px' }}>
+                {f.icon}
+              </div>
+              <div
+                style={{
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  marginBottom: '4px',
+                  color: '#C8102E',
+                }}
+              >
+                {f.title}
+              </div>
+              <div style={{ fontSize: '12px', color: '#333', lineHeight: 1.5 }}>
+                {f.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section
+        style={{
+          padding: '32px 16px',
+          background: '#f5f5f5',
+          borderBottom: '2px solid #000',
+        }}
+      >
+        <h2
+          style={{
+            textAlign: 'center',
+            fontSize: '20px',
+            margin: '0 0 20px',
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+            textDecoration: 'underline',
+          }}
+        >
+          Comment ça marche
+        </h2>
+        <ol
+          style={{
+            maxWidth: '560px',
+            margin: '0 auto',
+            paddingLeft: '24px',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '13px',
+            lineHeight: 1.8,
+            color: '#000',
+          }}
+        >
+          <li>
+            <strong>Connecte-toi</strong> avec un email fictif (ex:{' '}
+            <code
+              style={{
+                background: '#000',
+                color: '#fff',
+                padding: '1px 4px',
+              }}
+            >
+              aaron@sketch
+            </code>
+            ) — pas de mot de passe.
+          </li>
+          <li>
+            <strong>Tourne ton téléphone</strong> en paysage, appuie sur « À toi
+            de jouer ».
+          </li>
+          <li>
+            <strong>Joystick gauche</strong> : positionne le pinceau.
+          </li>
+          <li>
+            <strong>Joystick droit</strong> : trace le trait.
+          </li>
+          <li>
+            <strong>Secoue</strong> : 1× = couleur, 2× = gomme, rapide = tout
+            effacer.
+          </li>
+          <li>
+            <strong>Sauvegarde</strong> ton dessin pour le partager.
+          </li>
+        </ol>
+      </section>
+
+      {/* About */}
+      <section
+        style={{
+          padding: '32px 16px',
+          background: '#fff',
+          borderBottom: '2px solid #000',
+          fontFamily: 'Arial, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '720px',
+            margin: '0 auto',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '16px',
-            marginBottom: '64px',
-          }}
-        >
-          <Feature
-            icon="🎮"
-            title="Double joystick"
-            text="Un stick pour bouger le pinceau, l'autre pour tracer. Reproduction fidèle du jouet d'époque, adaptée au tactile mobile."
-          />
-          <Feature
-            icon="🌈"
-            title="Mode dégradé ou noir"
-            text="Un secouement isole pour basculer entre le pinceau noir classique et un mode dégradé de couleurs animées."
-          />
-          <Feature
-            icon="💧"
-            title="Gomme & effacement"
-            text="Deux secouements activent la gomme locale. Secouements rapides et continus = écran entièrement effacé, comme un vrai Etch-A-Sketch."
-          />
-          <Feature
-            icon="🏆"
-            title="Classement communautaire"
-            text="Sauvegarde ton dessin, partage-le avec la communauté, reçois des votes (💚🩵❤️❌) et grimpe dans le classement."
-          />
-          <Feature
-            icon="🔐"
-            title="Authentification simple"
-            text="Un email fictif, sans mot de passe. Chaque identifiant est unique côté serveur, tes dessins te restent attachés."
-          />
-          <Feature
-            icon="📱"
-            title="100% mobile"
-            text="Pensé et optimisé pour téléphone en mode paysage. Sur desktop, le jeu s'affiche mais n'est pas l'expérience prévue."
-          />
-        </section>
-
-        {/* How it works */}
-        <section
-          style={{
-            background: '#111',
-            border: '1px solid #222',
-            borderRadius: '6px',
-            padding: '32px 20px',
-            marginBottom: '64px',
-          }}
-        >
-          <h2
-            style={{
-              fontSize: '22px',
-              margin: '0 0 24px',
-              color: '#d4af37',
-              fontWeight: 700,
-            }}
-          >
-            Comment ça marche
-          </h2>
-          <ol
-            style={{
-              paddingLeft: '20px',
-              margin: 0,
-              color: '#ccc',
-              lineHeight: 1.8,
-              fontSize: '15px',
-            }}
-          >
-            <li style={{ marginBottom: '10px' }}>
-              <strong style={{ color: '#fff' }}>Connecte-toi</strong> avec un
-              email fictif (ex: <code style={{ color: '#d4af37' }}>aaron@sketch</code>) — pas de mot de passe, pas de spam.
-            </li>
-            <li style={{ marginBottom: '10px' }}>
-              <strong style={{ color: '#fff' }}>Tourne ton téléphone</strong>{' '}
-              en mode paysage, puis appuie sur « À toi de jouer ».
-            </li>
-            <li style={{ marginBottom: '10px' }}>
-              <strong style={{ color: '#fff' }}>Joystick gauche</strong> :
-              positionne le pinceau sur l&apos;écran.
-            </li>
-            <li style={{ marginBottom: '10px' }}>
-              <strong style={{ color: '#fff' }}>Joystick droit</strong> : trace
-              le trait pendant que tu bouges.
-            </li>
-            <li style={{ marginBottom: '10px' }}>
-              <strong style={{ color: '#fff' }}>Secoue</strong> : 1 fois =
-              couleur, 2 fois = gomme, vite = tout effacer.
-            </li>
-            <li>
-              <strong style={{ color: '#fff' }}>Sauvegarde</strong> ton dessin
-              et partage-le au reste de la communauté.
-            </li>
-          </ol>
-        </section>
-
-        {/* About / Tech */}
-        <section
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: '16px',
-            marginBottom: '64px',
+            gap: '12px',
           }}
         >
           <div
             style={{
-              background: '#111',
-              border: '1px solid #222',
-              padding: '20px',
-              borderRadius: '6px',
+              border: '2px solid #000',
+              padding: '14px',
+              background: '#fff',
             }}
           >
             <h3
               style={{
-                margin: '0 0 12px',
-                fontSize: '16px',
-                color: '#fff',
+                margin: '0 0 8px',
+                fontSize: '14px',
+                color: '#C8102E',
+                textTransform: 'uppercase',
               }}
             >
               Stack technique
@@ -291,32 +480,32 @@ export default function LandingPage() {
               style={{
                 margin: 0,
                 paddingLeft: '18px',
-                color: '#999',
-                fontSize: '13px',
+                fontSize: '12px',
                 lineHeight: 1.7,
+                color: '#333',
               }}
             >
               <li>Next.js 16 + TypeScript</li>
               <li>Canvas 2D pour le dessin</li>
-              <li>Prisma + SQLite pour la persistance</li>
+              <li>Prisma + SQLite</li>
               <li>API Routes server-side</li>
-              <li>Détection DeviceMotion pour le shake</li>
-              <li>Auth par cookie httpOnly</li>
+              <li>DeviceMotion pour le shake</li>
+              <li>Cookie httpOnly pour l&apos;auth</li>
             </ul>
           </div>
           <div
             style={{
-              background: '#111',
-              border: '1px solid #222',
-              padding: '20px',
-              borderRadius: '6px',
+              border: '2px solid #000',
+              padding: '14px',
+              background: '#fff',
             }}
           >
             <h3
               style={{
-                margin: '0 0 12px',
-                fontSize: '16px',
-                color: '#fff',
+                margin: '0 0 8px',
+                fontSize: '14px',
+                color: '#C8102E',
+                textTransform: 'uppercase',
               }}
             >
               Communauté
@@ -325,118 +514,91 @@ export default function LandingPage() {
               style={{
                 margin: 0,
                 paddingLeft: '18px',
-                color: '#999',
-                fontSize: '13px',
+                fontSize: '12px',
                 lineHeight: 1.7,
+                color: '#333',
               }}
             >
-              <li>Tout le monde voit les dessins publics</li>
-              <li>Ton identifiant est unique et persistant</li>
+              <li>Dessins publics visibles par tous</li>
+              <li>Identifiant unique et persistant</li>
               <li>4 types de votes : 💚 🩵 ❤️ ❌</li>
-              <li>Score calculé selon les votes reçus</li>
-              <li>Dessins privés visibles seulement par toi</li>
+              <li>Score calculé selon les votes</li>
+              <li>Dessins privés = visibles par toi seul</li>
             </ul>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Final CTA */}
-        <section
+      {/* Final CTA */}
+      <section
+        style={{
+          padding: '48px 16px',
+          background: '#C8102E',
+          color: '#fff',
+          textAlign: 'center',
+          borderBottom: '4px double #000',
+        }}
+      >
+        <h2
           style={{
-            textAlign: 'center',
-            padding: '48px 0 32px',
-            borderTop: '1px solid #222',
+            fontSize: '22px',
+            fontWeight: 'bold',
+            margin: '0 0 10px',
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+            textShadow: '2px 2px 0 #000',
           }}
         >
-          <h2
-            style={{
-              fontSize: '24px',
-              fontWeight: 700,
-              margin: '0 0 12px',
-            }}
-          >
-            Prêt à devenir le prochain Picasso du pixel ?
-          </h2>
-          <p style={{ color: '#777', fontSize: '14px', marginBottom: '24px' }}>
-            Gratuit · Sans inscription compliquée · Mobile uniquement
-          </p>
-          <Link
-            href="/play"
-            style={{
-              display: 'inline-block',
-              background: '#d4af37',
-              color: '#000',
-              padding: '14px 36px',
-              borderRadius: '4px',
-              textDecoration: 'none',
-              fontWeight: 700,
-              fontSize: '16px',
-            }}
-          >
-            ▶ Lancer le jeu
-          </Link>
-        </section>
-      </main>
+          Prêt à dessiner ?
+        </h2>
+        <p
+          style={{
+            fontSize: '13px',
+            marginBottom: '20px',
+            opacity: 0.9,
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          Gratuit · Sans inscription compliquée · Mobile uniquement
+        </p>
+        <Link
+          href="/play"
+          style={{
+            display: 'inline-block',
+            background: '#fff',
+            color: '#C8102E',
+            padding: '14px 36px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            fontSize: '16px',
+            border: '3px solid #000',
+            fontFamily: 'Arial, sans-serif',
+            textTransform: 'uppercase',
+            boxShadow: '4px 4px 0 #000',
+          }}
+        >
+          ▶ Lancer le jeu
+        </Link>
+      </section>
 
       {/* Footer */}
       <footer
         style={{
+          background: '#000',
+          color: '#fff',
+          padding: '20px 16px',
           textAlign: 'center',
-          padding: '32px 0 0',
-          borderTop: '1px solid #1a1a1a',
-          color: '#555',
-          fontSize: '12px',
+          fontSize: '11px',
+          fontFamily: 'Arial, sans-serif',
         }}
       >
-        <div style={{ maxWidth: '960px', margin: '0 auto' }}>
-          <div style={{ marginBottom: '6px' }}>
-            Designed by{' '}
-            <span style={{ color: '#d4af37' }}>Aeron</span>
-          </div>
-          <div>© {new Date().getFullYear()} Sketch Challenge · Version test</div>
+        <div style={{ marginBottom: '6px' }}>
+          Designed by <span style={{ color: '#C8102E' }}>Aeron</span>
+        </div>
+        <div style={{ opacity: 0.6 }}>
+          © {new Date().getFullYear()} Sketch Challenge · Version test
         </div>
       </footer>
-    </div>
-  )
-}
-
-function Feature({
-  icon,
-  title,
-  text,
-}: {
-  icon: string
-  title: string
-  text: string
-}) {
-  return (
-    <div
-      style={{
-        background: '#111',
-        border: '1px solid #222',
-        borderRadius: '6px',
-        padding: '20px',
-      }}
-    >
-      <div style={{ fontSize: '24px', marginBottom: '10px' }}>{icon}</div>
-      <h3
-        style={{
-          margin: '0 0 8px',
-          fontSize: '15px',
-          color: '#fff',
-        }}
-      >
-        {title}
-      </h3>
-      <p
-        style={{
-          margin: 0,
-          color: '#999',
-          fontSize: '13px',
-          lineHeight: 1.55,
-        }}
-      >
-        {text}
-      </p>
     </div>
   )
 }
