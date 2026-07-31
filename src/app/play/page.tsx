@@ -106,31 +106,37 @@ export default function EtchASketch() {
   // Persistence refs
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const hasLoadedFromStorage = useRef(false)
+  // Backup ref: stores latest canvas data URL so we can save even if canvas ref is null on unmount
+  const lastCanvasDataRef = useRef<string | null>(null)
   
-  // Save canvas to localStorage (debounced)
-  const saveCanvasToLocal = useCallback(() => {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      const canvas = canvasRef.current
-      if (!canvas || canvas.width === 0 || canvas.height === 0) return
+  // Flush canvas to localStorage immediately (no debounce)
+  const flushCanvasSave = useCallback(() => {
+    const canvas = canvasRef.current
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
       try {
-        // Compress to JPEG to save space (localStorage ~5MB limit)
         const data = canvas.toDataURL('image/jpeg', 0.7)
-        try {
-          localStorage.setItem('sketch-canvas', data)
-          localStorage.setItem('sketch-canvas-time', Date.now().toString())
-          // Also save canvas dimensions for proper restore
-          localStorage.setItem('sketch-canvas-w', canvas.width.toString())
-          localStorage.setItem('sketch-canvas-h', canvas.height.toString())
-        } catch (storageErr) {
-          // Quota exceeded — try smaller size or skip
-          console.warn('localStorage quota exceeded, skipping save')
-        }
+        lastCanvasDataRef.current = data
+        localStorage.setItem('sketch-canvas', data)
+        localStorage.setItem('sketch-canvas-time', Date.now().toString())
+        localStorage.setItem('sketch-canvas-w', canvas.width.toString())
+        localStorage.setItem('sketch-canvas-h', canvas.height.toString())
       } catch (e) {
         console.warn('Could not serialize canvas:', e)
       }
-    }, 500)
+    } else if (lastCanvasDataRef.current) {
+      // Canvas ref is null (unmounting) — save from backup ref
+      try {
+        localStorage.setItem('sketch-canvas', lastCanvasDataRef.current)
+        localStorage.setItem('sketch-canvas-time', Date.now().toString())
+      } catch {}
+    }
   }, [])
+
+  // Save canvas to localStorage (debounced)
+  const saveCanvasToLocal = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(flushCanvasSave, 300)
+  }, [flushCanvasSave])
   
   // Clear saved canvas (after full erase)
   const clearSavedCanvas = useCallback(() => {
@@ -145,7 +151,12 @@ export default function EtchASketch() {
   // Hydrate: restore isStarted from localStorage BEFORE first paint
   useEffect(() => {
     const wasStarted = localStorage.getItem('sketch-started') === 'true'
-    if (wasStarted) setIsStarted(true)
+    // Also check if there's saved canvas data — if so, auto-start
+    const hasSavedCanvas = !!localStorage.getItem('sketch-canvas')
+    if (wasStarted || hasSavedCanvas) {
+      setIsStarted(true)
+      localStorage.setItem('sketch-started', 'true')
+    }
     setHydrated(true)
   }, [])
 
@@ -238,27 +249,28 @@ export default function EtchASketch() {
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
           }
           img.src = imageData
-        } else if (!hasLoadedFromStorage.current) {
-          // First init — try to load from localStorage
-          hasLoadedFromStorage.current = true
-          try {
-            const saved = localStorage.getItem('sketch-canvas')
-            const savedW = parseInt(localStorage.getItem('sketch-canvas-w') || '0', 10)
-            const savedH = parseInt(localStorage.getItem('sketch-canvas-h') || '0', 10)
-            if (saved && savedW > 0 && savedH > 0) {
-              const img = new Image()
-              img.onload = () => {
-                // Scale saved image to current canvas size
-                ctx.drawImage(img, 0, 0, savedW, savedH, 0, 0, canvas.width, canvas.height)
-              }
-              img.src = saved
-            }
-          } catch {}
         }
       }
     }
     
     if (!canvasInitialized.current) {
+      // Try to restore from localStorage (with retry for timing)
+      if (!hasLoadedFromStorage.current) {
+        hasLoadedFromStorage.current = true
+        try {
+          const saved = localStorage.getItem('sketch-canvas')
+          const savedW = parseInt(localStorage.getItem('sketch-canvas-w') || '0', 10)
+          const savedH = parseInt(localStorage.getItem('sketch-canvas-h') || '0', 10)
+          if (saved && savedW > 0 && savedH > 0 && ctx) {
+            const img = new Image()
+            img.onload = () => {
+              if (ctx) ctx.drawImage(img, 0, 0, savedW, savedH, 0, 0, canvas.width, canvas.height)
+            }
+            img.src = saved
+          }
+        } catch {}
+      }
+
       penX.current = rect.width / 2
       penY.current = rect.height / 2
       lastPenX.current = penX.current
@@ -536,7 +548,8 @@ export default function EtchASketch() {
     
     rafRef.current = requestAnimationFrame(gameLoop)
     if (!canvasInitialized.current) {
-      initCanvas()
+      // Delay init slightly to ensure DOM layout is complete
+      setTimeout(() => initCanvas(), 50)
     }
     
     return () => cancelAnimationFrame(rafRef.current)
@@ -696,43 +709,40 @@ export default function EtchASketch() {
     return () => window.removeEventListener('resize', handle)
   }, [isStarted, initCanvas])
   
+  // Keep backup ref updated whenever we save
+  useEffect(() => {
+    if (!isStarted) return
+    const interval = setInterval(() => {
+      const canvas = canvasRef.current
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        try {
+          lastCanvasDataRef.current = canvas.toDataURL('image/jpeg', 0.7)
+        } catch {}
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [isStarted])
+
   // Persist canvas before user leaves (page hide, switch tab, navigate away)
   useEffect(() => {
     if (!isStarted) return
     
-    const flushSave = () => {
-      // Cancel pending debounced save and save immediately
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-        saveTimer.current = null
-      }
-      const canvas = canvasRef.current
-      if (!canvas || canvas.width === 0 || canvas.height === 0) return
-      try {
-        const data = canvas.toDataURL('image/jpeg', 0.7)
-        localStorage.setItem('sketch-canvas', data)
-        localStorage.setItem('sketch-canvas-time', Date.now().toString())
-        localStorage.setItem('sketch-canvas-w', canvas.width.toString())
-        localStorage.setItem('sketch-canvas-h', canvas.height.toString())
-      } catch {}
-    }
-    
     const onVis = () => {
-      if (document.visibilityState === 'hidden') flushSave()
+      if (document.visibilityState === 'hidden') flushCanvasSave()
     }
     
     document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('pagehide', flushSave)
-    window.addEventListener('beforeunload', flushSave)
+    window.addEventListener('pagehide', flushCanvasSave)
+    window.addEventListener('beforeunload', flushCanvasSave)
     
     return () => {
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('pagehide', flushSave)
-      window.removeEventListener('beforeunload', flushSave)
-      // Final save on unmount too
-      flushSave()
+      window.removeEventListener('pagehide', flushCanvasSave)
+      window.removeEventListener('beforeunload', flushCanvasSave)
+      // Final save on unmount — flushCanvasSave handles null canvas via backup ref
+      flushCanvasSave()
     }
-  }, [isStarted])
+  }, [isStarted, flushCanvasSave])
   
   // Auth submit (simple - no password)
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -904,25 +914,23 @@ export default function EtchASketch() {
             {/* Menu button */}
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="w-11 h-11 rounded-full flex flex-col justify-center items-center gap-[3px] transition-all duration-300"
+              className="w-11 h-11 rounded-full flex justify-center items-center transition-all duration-300 flex-shrink-0"
               style={{ 
                 background: showMenu ? 'rgba(212,175,55,0.9)' : 'rgba(0,0,0,0.4)',
-                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none',
-                overflow: 'visible'
+                boxShadow: showMenu ? '0 0 15px rgba(212,175,55,0.5)' : 'none'
               }}
             >
-              <span 
-                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
-                style={{ transform: showMenu ? 'rotate(45deg) translate(3px, 3px)' : 'none' }}
-              />
-              <span 
-                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
-                style={{ opacity: showMenu ? 0 : 1 }}
-              />
-              <span 
-                className="w-[18px] h-[2px] bg-white rounded-sm transition-all duration-300"
-                style={{ transform: showMenu ? 'rotate(-45deg) translate(3px, -3px)' : 'none' }}
-              />
+              {showMenu ? (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 5L15 15M15 5L5 15" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <div className="flex flex-col justify-center items-center gap-[4px]">
+                  <span className="block w-[18px] h-[2px] bg-white rounded-sm"/>
+                  <span className="block w-[18px] h-[2px] bg-white rounded-sm"/>
+                  <span className="block w-[18px] h-[2px] bg-white rounded-sm"/>
+                </div>
+              )}
             </button>
           </div>
         )}
@@ -930,7 +938,7 @@ export default function EtchASketch() {
         {/* Dropdown menu */}
         {isStarted && showMenu && (
           <div 
-            className="absolute top-[6vh] right-[2vw] z-[1001] rounded-xl overflow-hidden menu-slide"
+            className="absolute top-[6vh] right-[2vw] z-[1003] rounded-xl overflow-hidden menu-slide"
             style={{
               background: 'linear-gradient(145deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98))',
               boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
