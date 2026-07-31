@@ -61,3 +61,4 @@ prisma/*.db-journal
 # PM2 / logs
 logs/
 *.log
+tool-results/
