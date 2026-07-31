@@ -1,8 +1,90 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 
 export default function LandingPage() {
+  const [isMobile, setIsMobile] = useState(true)
+
+  useEffect(() => {
+    const check = () => {
+      const ua = navigator.userAgent || ''
+      const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+      const small = window.innerWidth <= 1024
+      const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)
+      // Considered mobile if touch device AND small screen, OR mobile UA
+      setIsMobile((touch && small) || mobileUA)
+    }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  if (!isMobile) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          background: '#C8102E',
+          color: '#fff',
+          fontFamily: 'Arial, sans-serif',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '64px',
+            marginBottom: '16px',
+          }}
+        >
+          📱
+        </div>
+        <h1
+          style={{
+            fontSize: '32px',
+            fontWeight: 'bold',
+            margin: '0 0 12px',
+            textTransform: 'uppercase',
+            textShadow: '2px 2px 0 #000',
+          }}
+        >
+          Désolé
+        </h1>
+        <p
+          style={{
+            fontSize: '16px',
+            maxWidth: '420px',
+            lineHeight: 1.6,
+            opacity: 0.95,
+          }}
+        >
+          Sketch Challenge n&apos;est disponible que sur mobile.
+          <br />
+          Ouvre cette page sur ton téléphone, en mode paysage, pour pouvoir
+          dessiner avec les deux joysticks.
+        </p>
+        <div
+          style={{
+            marginTop: '24px',
+            padding: '8px 14px',
+            background: '#000',
+            color: '#fff',
+            fontSize: '12px',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+          }}
+        >
+          Designed by Aeron
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       style={{
@@ -28,7 +110,7 @@ export default function LandingPage() {
           borderBottom: '3px solid #000',
         }}
       >
-        ★ Sketch Challenge ★ — Version Test — Mobile Uniquement
+        ★ Sketch Challenge ★ · Version Test · Mobile Uniquement
       </div>
 
       {/* Header */}
@@ -262,7 +344,7 @@ export default function LandingPage() {
           }}
         >
           Deux joysticks. Un pour positionner le pinceau, l&apos;autre pour
-          tracer. Secoue ton téléphone pour effacer — exactement comme le vrai
+          tracer. Secoue ton téléphone pour effacer. Exactement comme le vrai
           jouet, mais en mieux. Sauvegarde tes dessins et affronte la
           communauté.
         </p>
@@ -419,7 +501,7 @@ export default function LandingPage() {
             >
               aaron@sketch
             </code>
-            ) — pas de mot de passe.
+            ) · pas de mot de passe.
           </li>
           <li>
             <strong>Tourne ton téléphone</strong> en paysage, appuie sur « À toi
